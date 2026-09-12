@@ -329,8 +329,10 @@ void CXWaylandServer::die() {
         m_xFDReadEvents = {nullptr, nullptr};
     }
 
-    if (m_pipeSource)
+    if (m_pipeSource) {
         wl_event_source_remove(m_pipeSource);
+        m_pipeSource = nullptr;
+    }
 
     // possible crash. Better to leak a bit.
     //if (xwaylandClient)
@@ -373,12 +375,17 @@ void CXWaylandServer::runXWayland(CFileDescriptor& notifyFD) {
         LOG(Log::ERR, "ARLINUX_XWAYLAND must name the packaged Xwayland executable");
         _exit(EXIT_FAILURE);
     }
-    const auto listen0 = std::to_string(m_xFDs[0].get());
-    const auto listen1 = std::to_string(m_xFDs[1].get());
-    const auto notify  = std::to_string(notifyFD.get());
-    const auto wm      = std::to_string(m_xwmFDs[1].get());
-    execl(executable, "Xwayland", m_displayName.c_str(), "-rootless", "-core", "-listenfd", listen0.c_str(), "-listenfd", listen1.c_str(), "-displayfd", notify.c_str(), "-wm",
-          wm.c_str(), nullptr);
+    const auto listen0      = std::to_string(m_xFDs[0].get());
+    const auto listen1      = std::to_string(m_xFDs[1].get());
+    const auto notify       = std::to_string(notifyFD.get());
+    const auto wm           = std::to_string(m_xwmFDs[1].get());
+    const auto xkbDirectory = getenv("XKB_CONFIG_ROOT");
+    if (xkbDirectory && *xkbDirectory)
+        execl(executable, "Xwayland", m_displayName.c_str(), "-rootless", "-core", "-listenfd", listen0.c_str(), "-listenfd", listen1.c_str(), "-displayfd", notify.c_str(), "-wm",
+              wm.c_str(), "-xkbdir", xkbDirectory, nullptr);
+    else
+        execl(executable, "Xwayland", m_displayName.c_str(), "-rootless", "-core", "-listenfd", listen0.c_str(), "-listenfd", listen1.c_str(), "-displayfd", notify.c_str(), "-wm",
+              wm.c_str(), nullptr);
 #else
     execl("/bin/sh", "/bin/sh", "-c", cmd.c_str(), nullptr);
 #endif

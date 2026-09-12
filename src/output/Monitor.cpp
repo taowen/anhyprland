@@ -829,7 +829,11 @@ bool CMonitor::applyMonitorRule(Config::CMonitorRule&& pMonitorRule) {
     m_customDrmMode = {};
     m_currentMode   = nullptr;
 
+#ifdef __ANDROID__
+    const auto initialFormat = m_drmFormat != DRM_FORMAT_INVALID ? m_drmFormat : DRM_FORMAT_XBGR8888;
+#else
     const auto initialFormat = m_drmFormat != DRM_FORMAT_INVALID ? m_drmFormat : DRM_FORMAT_XRGB8888;
+#endif
     m_output->state->setFormat(initialFormat);
     m_prevDrmFormat = m_drmFormat;
     m_drmFormat     = initialFormat;
@@ -2583,7 +2587,12 @@ void CMonitorState::ensureBufferPresent() {
     }
 
     if (STATE.buffer) {
-        if (const auto params = STATE.buffer->dmabuf(); params.success && params.format == m_owner->m_drmFormat)
+        const auto params = STATE.buffer->dmabuf();
+#ifdef __ANDROID__
+        if (STATE.buffer->androidBuffer() && params.format == m_owner->m_drmFormat)
+            return;
+#endif
+        if (params.success && params.format == m_owner->m_drmFormat)
             return;
     }
 

@@ -152,6 +152,13 @@ bool CAndroidBackend::dispatchEvents() {
     if (read(m_timer.get(), &count, sizeof(count)) != sizeof(count))
         return true;
     m_frameScheduled = false;
+    // Device listeners depend on compositor managers initialized after start().
+    if (!m_keyboard) {
+        m_keyboard = makeShared<CAndroidKeyboard>();
+        m_pointer = makeShared<CAndroidPointer>();
+        m_backend->events.newKeyboard.emit(m_keyboard);
+        m_backend->events.newPointer.emit(m_pointer);
+    }
     if (m_window && m_output) {
         m_lastFrame = std::chrono::steady_clock::now();
         m_output->events.frame.emit();
@@ -161,10 +168,7 @@ bool CAndroidBackend::dispatchEvents() {
 
 void CAndroidBackend::onReady() {
     createOutput();
-    m_keyboard = makeShared<CAndroidKeyboard>();
-    m_pointer = makeShared<CAndroidPointer>();
-    m_backend->events.newKeyboard.emit(m_keyboard);
-    m_backend->events.newPointer.emit(m_pointer);
+    scheduleFrame();
 }
 
 std::vector<SDRMFormat> CAndroidBackend::getRenderFormats() {

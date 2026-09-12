@@ -1,4 +1,7 @@
 #include "Logger.hpp"
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 #include "RollingLogFollow.hpp"
 
 #include "../../event/EventBus.hpp"
@@ -21,6 +24,9 @@ void CLogger::log(Hyprutils::CLI::eLogLevel level, const std::string_view& str) 
     if (SRollingLogFollow::get().isRunning())
         SRollingLogFollow::get().addLog(str);
 
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_DEBUG, "anhyprland", "%.*s", static_cast<int>(str.size()), str.data());
+#endif
     m_logger.log(level, str);
 }
 

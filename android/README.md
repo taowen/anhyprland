@@ -10,7 +10,7 @@ Linux applications retain arlinux's glibc runtime and the existing OpenGL → Zi
 
 The Aquamarine Android backend builds with NDK 29 for arm64-v8a, API 28. It provides a single Surface output, AHardwareBuffer allocation, keyboard/pointer injection, frame scheduling, and a compositor-thread Surface attachment interface. Desktop DRM/seat backends are excluded from this Android build. AHB buffers do not advertise fabricated DMA-BUF descriptors.
 
-The full Hyprland renderer, embedding lifecycle and `android_wlegl` integration are under development. Initial code exists for GLES/AHB presentation, an event-queue embedding API and android_wlegl v1/v2 buffer transport. The full arm64 Android shared library now compiles and links with NDK 29; none of these additions has passed device acceptance. A successful dependency/backend build is not yet a working Hyprland desktop.
+The full arm64 Android shared library compiles and links with NDK 29. The standalone [smoke APK](smoke/README.md) runs Hyprland on vivo X300 (Mali, Android 16) and Redmi K40 (Adreno, Android 13). Device checks cover visible SHM windows, GLES-produced android_wlegl v1/v2 buffers, tiling, Xwayland windows, pointer/keyboard input, Surface replacement, and clean shutdown with Xwayland reaping. This is a working compositor bring-up, not an Omarchy distribution or completed arlinux host integration. The existing glibc/Zink/Turnip/libhybris client stack still needs end-to-end acceptance against this compositor.
 
 ## Build prerequisites and dependency recipes
 

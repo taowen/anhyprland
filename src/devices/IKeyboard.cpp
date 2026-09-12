@@ -10,6 +10,12 @@
 #include <aquamarine/input/Input.hpp>
 #include <hyprutils/string/VarList.hpp>
 #include <cstring>
+#ifdef __ANDROID__
+#include <linux/memfd.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cerrno>
+#endif
 
 using namespace Hyprutils::OS;
 using namespace Hyprutils::String;
@@ -148,6 +154,28 @@ void IKeyboard::setKeymap(const SStringRuleNames& rules) {
     g_pSeatManager->updateActiveKeyboardData();
 }
 
+#ifdef __ANDROID__
+static CFileDescriptor sealedKeymap(const std::string& keymap) {
+    auto fd = allocateSHMFile(keymap.size() + 1);
+    if (!fd.isValid())
+        return {};
+    size_t written = 0;
+    while (written < keymap.size() + 1) {
+        const auto count = pwrite(fd.get(), keymap.c_str() + written, keymap.size() + 1 - written, written);
+        if (count < 0 && errno == EINTR)
+            continue;
+        if (count <= 0)
+            return {};
+        written += count;
+    }
+    // Android SELinux denies chmod on memfd. Seal the completed keymap instead,
+    // so reopening an exported descriptor cannot make its contents writable.
+    if (fcntl(fd.get(), F_ADD_SEALS, F_SEAL_WRITE | F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL) < 0)
+        return {};
+    return fd;
+}
+#endif
+
 void IKeyboard::updateKeymapFD() {
     LOG(Log::DEBUG, "Updating keymap fd for keyboard {}", m_deviceName);
 
@@ -164,6 +192,10 @@ void IKeyboard::updateKeymapFD() {
     m_xkbKeymapV1String = cKeymapV1Str;
     free(cKeymapV1Str); // NOLINT(cppcoreguidelines-no-malloc,-warnings-as-errors)
 
+#ifdef __ANDROID__
+    m_xkbKeymapFD   = sealedKeymap(m_xkbKeymapString);
+    m_xkbKeymapV1FD = sealedKeymap(m_xkbKeymapV1String);
+#else
     CFileDescriptor rw, ro, rwV1, roV1;
     if (!allocateSHMFilePair(m_xkbKeymapString.length() + 1, rw, ro))
         LOG(Log::ERR, "IKeyboard: failed to allocate shm pair for the keymap");
@@ -194,6 +226,7 @@ void IKeyboard::updateKeymapFD() {
         }
     }
 
+#endif
     LOG(Log::DEBUG, "Updated keymap fd to {}, keymap V1 to: {}", m_xkbKeymapFD.get(), m_xkbKeymapV1FD.get());
 }
 

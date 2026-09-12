@@ -79,7 +79,11 @@ static inline void loadGLProc(void* pProc, const char* name) {
     void* proc = rc<void*>(eglGetProcAddress(name));
     if (proc == nullptr) {
         LOG(Log::CRIT, "[Tracy GPU Profiling] eglGetProcAddress({}) failed", name);
+#ifdef __ANDROID__
+        throw std::runtime_error(std::format("Missing EGL entry point: {}", name));
+#else
         abort();
+#endif
     }
     *sc<void**>(pProc) = proc;
 }
@@ -306,11 +310,14 @@ CHyprOpenGLImpl::CHyprOpenGLImpl() : m_drmFD(g_pCompositor->m_drmRenderNode.fd >
     loadGLProc(&m_proc.glEGLImageTargetRenderbufferStorageOES, "glEGLImageTargetRenderbufferStorageOES");
     loadGLProc(&m_proc.eglCreateImageKHR, "eglCreateImageKHR");
     loadGLProc(&m_proc.eglDestroyImageKHR, "eglDestroyImageKHR");
+#ifndef __ANDROID__
     loadGLProc(&m_proc.eglQueryDmaBufFormatsEXT, "eglQueryDmaBufFormatsEXT");
     loadGLProc(&m_proc.eglQueryDmaBufModifiersEXT, "eglQueryDmaBufModifiersEXT");
+#endif
     loadGLProc(&m_proc.glEGLImageTargetTexture2DOES, "glEGLImageTargetTexture2DOES");
-    loadGLProc(&m_proc.eglDebugMessageControlKHR, "eglDebugMessageControlKHR");
+#ifndef __ANDROID__
     loadGLProc(&m_proc.eglGetPlatformDisplayEXT, "eglGetPlatformDisplayEXT");
+#endif
     loadGLProc(&m_proc.eglCreateSyncKHR, "eglCreateSyncKHR");
     loadGLProc(&m_proc.eglDestroySyncKHR, "eglDestroySyncKHR");
     loadGLProc(&m_proc.eglDupNativeFenceFDANDROID, "eglDupNativeFenceFDANDROID");

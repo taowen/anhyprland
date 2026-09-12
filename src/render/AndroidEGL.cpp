@@ -98,7 +98,8 @@ bool CHyprOpenGLImpl::presentAndroidBuffer(SP<Aquamarine::IBuffer> buffer) {
     ok = ok && eglQuerySurface(m_eglDisplay, m_androidWindowSurface, EGL_WIDTH, &width) && eglQuerySurface(m_eglDisplay, m_androidWindowSurface, EGL_HEIGHT, &height);
     if (ok) {
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBlitFramebuffer(0, 0, buffer->size.x, buffer->size.y, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        // Hyprland renders output buffers with a top-left origin; EGL windows use bottom-left.
+        glBlitFramebuffer(0, 0, buffer->size.x, buffer->size.y, 0, height, width, 0, GL_COLOR_BUFFER_BIT, GL_NEAREST);
         ok = glGetError() == GL_NO_ERROR;
         // The existing android_wlegl contract has no compositor release fence.
         // Finish sampling before this output buffer or client AHB can be reused.
