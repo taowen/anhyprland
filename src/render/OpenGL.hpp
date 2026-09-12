@@ -43,6 +43,10 @@
 #define GLFB(ifb) dc<CGLFramebuffer*>(ifb.get())
 
 struct gbm_device;
+#ifdef __ANDROID__
+struct ANativeWindow;
+struct AHardwareBuffer;
+#endif
 namespace Render {
     class IHyprRenderer;
 }
@@ -229,46 +233,49 @@ namespace Render::GL {
         void bindArrayBuffer(GLuint buffer);
         void bindFramebuffer(GLenum target, GLuint fb);
         // GL implicitly rebinds 0 on every target the deleted fb was bound to, keep the shadow in sync
-        void                                      onFramebufferDeleted(GLuint fb);
+        void                           onFramebufferDeleted(GLuint fb);
 
-        void                                      blend(bool enabled);
-        bool                                      blendEnabled() const;
+        void                           blend(bool enabled);
+        bool                           blendEnabled() const;
 
-        void                                      scissor(const CBox&, bool transform = true);
-        void                                      scissor(const pixman_box32*, bool transform = true);
-        void                                      scissor(const int x, const int y, const int w, const int h, bool transform = true);
+        void                           scissor(const CBox&, bool transform = true);
+        void                           scissor(const pixman_box32*, bool transform = true);
+        void                           scissor(const int x, const int y, const int w, const int h, bool transform = true);
 
-        void                                      destroyMonitorResources(PHLMONITORREF);
+        void                           destroyMonitorResources(PHLMONITORREF);
 
-        bool                                      saveBufferForMirror(const CBox&);
+        bool                           saveBufferForMirror(const CBox&);
 
-        void                                      applyScreenShader(const std::string& path);
+        void                           applyScreenShader(const std::string& path);
 
-        void                                      renderOffToMain(SP<IFramebuffer> off);
+        void                           renderOffToMain(SP<IFramebuffer> off);
 
-        std::vector<SDRMFormat>                   getDRMFormats();
-        std::vector<uint64_t>                     getDRMFormatModifiers(DRMFormat format);
-        EGLImageKHR                               createEGLImage(const Aquamarine::SDMABUFAttrs& attrs);
+        std::vector<SDRMFormat>        getDRMFormats();
+        std::vector<uint64_t>          getDRMFormatModifiers(DRMFormat format);
+        EGLImageKHR                    createEGLImage(const Aquamarine::SDMABUFAttrs& attrs);
 
-        bool                                      initShaders(const std::string& path = "");
+        bool                           initShaders(const std::string& path = "");
 
-        WP<CShader>                               useShader(WP<CShader> prog);
+        WP<CShader>                    useShader(WP<CShader> prog);
 
-        bool                                      explicitSyncSupported();
-        bool                                      fp16Supported();
-        WP<CShader>                               getShaderVariant(Render::ePreparedFragmentShader frag, Render::ShaderFeatureFlags features = 0,
-                                                                   NColorManagement::eTransferFunction sourceTF = Render::SHADER_DEFAULT_TF,
-                                                                   NColorManagement::eTransferFunction targetTF = Render::SHADER_DEFAULT_TF);
-        WP<CShader>                               getShaderVariant(Render::ePreparedFragmentShader frag, const Render::SShaderVariant& variant);
+        bool                           explicitSyncSupported();
+        bool                           fp16Supported();
+        WP<CShader>                    getShaderVariant(Render::ePreparedFragmentShader frag, Render::ShaderFeatureFlags features = 0,
+                                                        NColorManagement::eTransferFunction sourceTF = Render::SHADER_DEFAULT_TF,
+                                                        NColorManagement::eTransferFunction targetTF = Render::SHADER_DEFAULT_TF);
+        WP<CShader>                    getShaderVariant(Render::ePreparedFragmentShader frag, const Render::SShaderVariant& variant);
 
-        bool                                      m_shadersInitialized = false;
-        SP<SPreparedShaders>                      m_shaders;
+        bool                           m_shadersInitialized = false;
+        SP<SPreparedShaders>           m_shaders;
 
-        Hyprutils::OS::CFileDescriptor            m_gbmFD;
-        gbm_device*                               m_gbmDevice  = nullptr;
-        EGLContext                                m_eglContext = nullptr;
-        EGLDisplay                                m_eglDisplay = nullptr;
-        EGLDeviceEXT                              m_eglDevice  = nullptr;
+        Hyprutils::OS::CFileDescriptor m_gbmFD;
+        gbm_device*                    m_gbmDevice  = nullptr;
+        EGLContext                     m_eglContext = nullptr;
+        EGLDisplay                     m_eglDisplay = nullptr;
+        EGLDeviceEXT                   m_eglDevice  = nullptr;
+#ifdef __ANDROID__
+        EGLImageKHR createAndroidImage(AHardwareBuffer* buffer);
+#endif
 
         std::map<PHLMONITORREF, SP<IFramebuffer>> m_monitorBGFBs;
 
@@ -353,7 +360,16 @@ namespace Render::GL {
 
         void                    initDRMFormats();
         void                    initEGL(bool gbm);
-        EGLDeviceEXT            eglDeviceFromDRMFD(int drmFD);
+#ifdef __ANDROID__
+        void       initAndroidEGL();
+        bool       attachAndroidWindow(ANativeWindow* window);
+        bool       presentAndroidBuffer(SP<Aquamarine::IBuffer> buffer);
+        void       destroyAndroidEGL();
+        EGLConfig  m_androidConfig        = nullptr;
+        EGLSurface m_androidIdleSurface   = EGL_NO_SURFACE;
+        EGLSurface m_androidWindowSurface = EGL_NO_SURFACE;
+#endif
+        EGLDeviceEXT eglDeviceFromDRMFD(int drmFD);
 
         // for the final shader
         std::array<CTimer, POINTER_PRESSED_HISTORY_LENGTH>   m_pressedHistoryTimers    = {};

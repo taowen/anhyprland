@@ -51,7 +51,9 @@
 #include <string>
 #include <xf86drm.h>
 #include <fcntl.h>
+#ifndef __ANDROID__
 #include <gbm.h>
+#endif
 #include <filesystem>
 #include <cstring>
 #include "./shaders/Shaders.hpp"
@@ -337,6 +339,9 @@ CHyprOpenGLImpl::CHyprOpenGLImpl() : m_drmFD(g_pCompositor->m_drmRenderNode.fd >
 
     RASSERT(eglBindAPI(EGL_OPENGL_ES_API) != EGL_FALSE, "Couldn't bind to EGL's opengl ES API. This means your gpu driver f'd up. This is not a hyprland issue.");
 
+#ifdef __ANDROID__
+    initAndroidEGL();
+#else
     bool success = false;
     if (EGLEXTENSIONS.contains("EXT_platform_device") || !m_proc.eglQueryDevicesEXT || !m_proc.eglQueryDeviceStringEXT) {
         m_eglDevice = eglDeviceFromDRMFD(m_drmFD);
@@ -364,6 +369,7 @@ CHyprOpenGLImpl::CHyprOpenGLImpl() : m_drmFD(g_pCompositor->m_drmRenderNode.fd >
     }
 
     RASSERT(success, "EGL does not support KHR_platform_gbm or EXT_platform_device, this is an issue with your gpu driver.");
+#endif
 
     auto* const EXTENSIONS = rc<const char*>(glGetString(GL_EXTENSIONS));
     RASSERT(EXTENSIONS, "Couldn't retrieve openGL extensions!");
@@ -458,6 +464,9 @@ CHyprOpenGLImpl::CHyprOpenGLImpl() : m_drmFD(g_pCompositor->m_drmRenderNode.fd >
 }
 
 CHyprOpenGLImpl::~CHyprOpenGLImpl() {
+#ifdef __ANDROID__
+    destroyAndroidEGL();
+#endif
     if (m_eglDisplay && m_eglContext != EGL_NO_CONTEXT)
         eglDestroyContext(m_eglDisplay, m_eglContext);
 
@@ -466,8 +475,10 @@ CHyprOpenGLImpl::~CHyprOpenGLImpl() {
 
     eglReleaseThread();
 
+#ifndef __ANDROID__
     if (m_gbmDevice)
         gbm_device_destroy(m_gbmDevice);
+#endif
 }
 
 std::optional<std::vector<uint64_t>> CHyprOpenGLImpl::getModsForFormat(EGLint format) {
@@ -520,6 +531,11 @@ std::optional<std::vector<uint64_t>> CHyprOpenGLImpl::getModsForFormat(EGLint fo
 }
 
 void CHyprOpenGLImpl::initDRMFormats() {
+#ifdef __ANDROID__
+    m_drmFormats.clear();
+    m_fp16Supported = false;
+    return;
+#endif
     const auto DISABLE_MODS = Env::envEnabled("HYPRLAND_EGL_NO_MODIFIERS");
     if (DISABLE_MODS)
         LOG(Log::WARN, "HYPRLAND_EGL_NO_MODIFIERS set, disabling modifiers");
@@ -720,8 +736,13 @@ void CHyprOpenGLImpl::makeEGLCurrent() {
     if (!g_pCompositor || !g_pHyprOpenGL)
         return;
 
-    if (eglGetCurrentContext() != g_pHyprOpenGL->m_eglContext)
-        eglMakeCurrent(g_pHyprOpenGL->m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, g_pHyprOpenGL->m_eglContext);
+    if (eglGetCurrentContext() != m_eglContext) {
+#ifdef __ANDROID__
+        eglMakeCurrent(m_eglDisplay, m_androidIdleSurface, m_androidIdleSurface, m_eglContext);
+#else
+        eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
+#endif
+    }
 }
 
 void CHyprOpenGLImpl::begin(PHLMONITOR pMonitor, const CRegion& damage_, SP<IFramebuffer> fb, std::optional<CRegion> finalDamage) {

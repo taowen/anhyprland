@@ -764,6 +764,14 @@ static std::string configErrorsRequest(eHyprCtlOutputFormat format, std::string 
     return result;
 }
 
+static float defaultPointerSpeed(const SP<Aquamarine::IPointer>& pointer) {
+#ifndef __ANDROID__
+    if (pointer && pointer->getLibinputHandle())
+        return libinput_device_config_accel_get_default_speed(pointer->getLibinputHandle());
+#endif
+    return 0.f;
+}
+
 static std::string devicesRequest(eHyprCtlOutputFormat format, std::string request) {
     std::string result = "";
 
@@ -788,8 +796,7 @@ static std::string devicesRequest(eHyprCtlOutputFormat format, std::string reque
         "defaultSpeed": {:.5f},
         "scrollFactor": {:.2f}
     }},)#",
-                rc<uintptr_t>(m.get()), escapeJSONStrings(m->m_hlName),
-                m->aq() && m->aq()->getLibinputHandle() ? libinput_device_config_accel_get_default_speed(m->aq()->getLibinputHandle()) : 0.f, m->m_scrollFactor.value_or(-1));
+                rc<uintptr_t>(m.get()), escapeJSONStrings(m->m_hlName), defaultPointerSpeed(m->aq()), m->m_scrollFactor.value_or(-1));
         }
 
         trimTrailingComma(result);
@@ -894,8 +901,7 @@ static std::string devicesRequest(eHyprCtlOutputFormat format, std::string reque
 
         for (auto const& m : g_pInputManager->m_pointers) {
             result += std::format("\tMouse at {:x}:\n\t\t{}\n\t\t\tdefault speed: {:.5f}\n\t\t\tscroll factor: {:.2f}\n", rc<uintptr_t>(m.get()), m->m_hlName,
-                                  (m->aq() && m->aq()->getLibinputHandle() ? libinput_device_config_accel_get_default_speed(m->aq()->getLibinputHandle()) : 0.f),
-                                  m->m_scrollFactor.value_or(-1));
+                                  (defaultPointerSpeed(m->aq())), m->m_scrollFactor.value_or(-1));
         }
 
         result += "\n\nKeyboards:\n";

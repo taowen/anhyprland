@@ -307,12 +307,14 @@ void CMonitor::onConnect(bool noRule) {
     if (m_output->nonDesktop) {
         LOG(Log::DEBUG, "Not configuring non-desktop output");
 
+#ifndef __ANDROID__
         for (auto& [name, lease] : PROTO::lease) {
             if (!lease || m_output->getBackend() != lease->getBackend())
                 continue;
 
             lease->offer(m_self.lock());
         }
+#endif
 
         return;
     }

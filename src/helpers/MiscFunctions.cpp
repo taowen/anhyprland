@@ -11,12 +11,16 @@
 #include <filesystem>
 #include <sys/utsname.h>
 #include <sys/mman.h>
+#ifdef __ANDROID__
+#include <sys/syscall.h>
+#include <linux/memfd.h>
+#endif
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <iomanip>
 #include <sstream>
 #include <fstream>
-#ifdef HAS_EXECINFO
+#if defined(HAS_EXECINFO) && !defined(__ANDROID__)
 #include <execinfo.h>
 #endif
 #include <hyprutils/string/String.hpp>
@@ -232,7 +236,7 @@ double normalizeAngleRad(double ang) {
 std::vector<SCallstackFrameInfo> getBacktrace() {
     std::vector<SCallstackFrameInfo> callstack;
 
-#ifdef HAS_EXECINFO
+#if defined(HAS_EXECINFO) && !defined(__ANDROID__)
     void*  bt[1024];
     int    btSize;
     char** btSymbols;
@@ -258,6 +262,13 @@ void throwError(const std::string& err) {
 }
 
 std::pair<CFileDescriptor, std::string> openExclusiveShm() {
+#ifdef __ANDROID__
+    CFileDescriptor fd{sc<int>(syscall(SYS_memfd_create, "anhyprland-shm", MFD_CLOEXEC | MFD_ALLOW_SEALING))};
+    if (!fd.isValid())
+        return {{}, ""};
+    auto name = std::format("/proc/self/fd/{}", fd.get());
+    return {std::move(fd), std::move(name)};
+#else
     // Only absolute paths can be shared across different shm_open() calls
     std::string name = std::format("/{}", g_pTokenManager->getRandomUUID());
 
@@ -268,6 +279,7 @@ std::pair<CFileDescriptor, std::string> openExclusiveShm() {
     }
 
     return {{}, ""};
+#endif
 }
 
 CFileDescriptor allocateSHMFile(size_t len) {
@@ -275,7 +287,9 @@ CFileDescriptor allocateSHMFile(size_t len) {
     if (!fd.isValid())
         return {};
 
+#ifndef __ANDROID__
     shm_unlink(name.c_str());
+#endif
 
     int ret;
     do {
@@ -296,13 +310,21 @@ bool allocateSHMFilePair(size_t size, CFileDescriptor& rw_fd_ptr, CFileDescripto
     }
 
     // CLOEXEC is guaranteed to be set by shm_open
+#ifdef __ANDROID__
+    CFileDescriptor ro_fd{open(name.c_str(), O_RDONLY | O_CLOEXEC)};
+#else
     CFileDescriptor ro_fd{shm_open(name.c_str(), O_RDONLY, 0)};
+#endif
     if (!ro_fd.isValid()) {
+#ifndef __ANDROID__
         shm_unlink(name.c_str());
+#endif
         return false;
     }
 
+#ifndef __ANDROID__
     shm_unlink(name.c_str());
+#endif
 
     // Make sure the file cannot be re-opened in read-write mode (e.g. via
     // "/proc/self/fd/" on Linux)

@@ -18,7 +18,13 @@ CXWayland::CXWayland(const bool wantsEnabled) {
         return;
     }
 
-    if (!NFsUtils::executableExistsInPath("Xwayland")) {
+#ifdef __ANDROID__
+    const auto executable = getenv("ARLINUX_XWAYLAND");
+    const bool available  = executable && executable[0] == '/' && access(executable, X_OK) == 0;
+#else
+    const bool available = NFsUtils::executableExistsInPath("Xwayland");
+#endif
+    if (!available) {
         // If Xwayland doesn't exist, don't try to start it.
         LOG(Log::DEBUG, "Unable to find XWayland; not starting it.");
         return;

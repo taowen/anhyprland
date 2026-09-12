@@ -25,7 +25,9 @@
 #include "../state/MonitorState.hpp"
 #include <climits>
 #include <cstring>
+#ifndef __ANDROID__
 #include <gbm.h>
+#endif
 #include <cairo/cairo.h>
 #include <hyprutils/math/Region.hpp>
 #include <hyprutils/math/Vector2D.hpp>

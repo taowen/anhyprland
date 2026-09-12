@@ -1,3 +1,5 @@
+> **Android port:** Development for arlinux lives on this branch. See [android/README.md](android/README.md) for architecture, build instructions and the current validation status.
+
 <div align = center>
 
 <img src="https://raw.githubusercontent.com/hyprwm/Hyprland/main/assets/header.svg" width="750" height="300" alt="banner">

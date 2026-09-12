@@ -102,7 +102,7 @@ def autotools(name, options=(), host=False):
     env = os.environ.copy() if host else cross_env()
     env["PATH"] = "/home/linuxbrew/.linuxbrew/bin:" + env["PATH"]
     env["ACLOCAL_PATH"] = "/home/linuxbrew/.linuxbrew/share/aclocal:" + str(SHARED / "share/aclocal")
-    if not (src / "configure").exists():
+    if not (src / "configure").exists() or name == "libxcb-errors":
         run(["autoreconf", "-fi"], cwd=src, env=env)
     build = BUILD / (("host-" if host else "android-") + name)
     build.mkdir(exist_ok=True)
@@ -136,6 +136,9 @@ def build(name):
         cmake(name, ["-DBUILD_SHARED_LIBS=ON", "-DWEBP_BUILD_ANIM_UTILS=OFF", "-DWEBP_BUILD_CWEBP=OFF", "-DWEBP_BUILD_DWEBP=OFF", "-DWEBP_BUILD_GIF2WEBP=OFF", "-DWEBP_BUILD_IMG2WEBP=OFF", "-DWEBP_BUILD_VWEBP=OFF", "-DWEBP_BUILD_WEBPINFO=OFF", "-DWEBP_BUILD_WEBPMUX=OFF", "-DWEBP_BUILD_EXTRAS=OFF"])
     elif name == "re2":
         cmake(name, ["-DBUILD_SHARED_LIBS=ON", "-DRE2_BUILD_TESTING=OFF"])
+        (PREFIX / "lib/pkgconfig/re2.pc").write_text(f"prefix={PREFIX}\nName: re2\nDescription: Regular expression library\nVersion: 2022.06.01\nLibs: -L${{prefix}}/lib -lre2\nCflags: -I${{prefix}}/include\n")
+    elif name == "libxkbcommon":
+        meson(name, ["-Denable-x11=false", "-Denable-wayland=false", "-Denable-tools=false", "-Denable-docs=false", "-Denable-xkbregistry=false"])
     elif name == "lunasvg":
         run(["git", "-C", source(name), "submodule", "update", "--init", "--depth=1"])
         cmake(name, ["-DBUILD_SHARED_LIBS=ON", "-DLUNASVG_BUILD_EXAMPLES=OFF"])

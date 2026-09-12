@@ -866,6 +866,9 @@ void CKeybindManager::updateXKBTranslationState() {
 }
 
 bool CKeybindManager::handleVT(xkb_keysym_t keysym) {
+#ifdef __ANDROID__
+    return false;
+#else
     if (keysym < XKB_KEY_XF86Switch_VT_1 || keysym > XKB_KEY_XF86Switch_VT_12)
         return false;
 
@@ -878,6 +881,7 @@ bool CKeybindManager::handleVT(xkb_keysym_t keysym) {
     if (g_pCompositor->m_aqBackend->hasSession())
         g_pCompositor->m_aqBackend->session->switchVT(VTNR);
     return true;
+#endif
 }
 
 bool CKeybindManager::handleInternalKeybinds(xkb_keysym_t keysym) {

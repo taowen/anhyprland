@@ -17,6 +17,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#ifdef __ANDROID__
+#include <sys/wait.h>
+#include <thread>
+#endif
 
 #include "Server.hpp"
 #include "XWayland.hpp"
@@ -79,10 +83,32 @@ static CFileDescriptor createSocket(struct sockaddr_un* addr, size_t pathSize) {
     return fd;
 }
 
+static std::string socketDirectory() {
+#ifdef __ANDROID__
+    const auto runtime = getenv("XDG_RUNTIME_DIR");
+    if (!runtime || !*runtime)
+        throw std::runtime_error("Xwayland requires XDG_RUNTIME_DIR");
+    auto directory = std::format("{}/.X11-unix", runtime);
+    if (directory.size() + 16 >= sizeof(sockaddr_un{}.sun_path))
+        throw std::runtime_error("Xwayland runtime socket path is too long");
+    return directory;
+#else
+    return "/tmp/.X11-unix";
+#endif
+}
+
+static std::string lockPathForDisplay(int display) {
+#ifdef __ANDROID__
+    return std::format("{}/.X{}-lock", socketDirectory(), display);
+#else
+    return std::format("/tmp/.X{}-lock", display);
+#endif
+}
+
 static bool checkPermissionsForSocketDir() {
     struct stat buf;
 
-    if (lstat("/tmp/.X11-unix", &buf)) {
+    if (lstat(socketDirectory().c_str(), &buf)) {
         LOG(Log::ERR, "Failed to stat X11 socket dir");
         return false;
     }
@@ -108,7 +134,7 @@ static bool checkPermissionsForSocketDir() {
 }
 
 static bool ensureSocketDirExists() {
-    if (mkdir("/tmp/.X11-unix", SOCKET_DIR_PERMISSIONS) != 0) {
+    if (mkdir(socketDirectory().c_str(), SOCKET_DIR_PERMISSIONS) != 0) {
         if (errno == EEXIST)
             return checkPermissionsForSocketDir();
         else {
@@ -122,9 +148,9 @@ static bool ensureSocketDirExists() {
 
 static std::string getSocketPath(int display, bool isLinux) {
     if (isLinux)
-        return std::format("/tmp/.X11-unix/X{}", display);
+        return std::format("{}/X{}", socketDirectory(), display);
 
-    return std::format("/tmp/.X11-unix/X{}_", display);
+    return std::format("{}/X{}_", socketDirectory(), display);
 }
 
 static bool openSockets(std::array<CFileDescriptor, 2>& sockets, int display) {
@@ -139,7 +165,7 @@ static bool openSockets(std::array<CFileDescriptor, 2>& sockets, int display) {
 #ifdef __linux__
     if (*CREATEABSTRACTSOCKET) {
         addr.sun_path[0] = '\0';
-        path             = getSocketPath(display, true);
+        path             = std::format("/tmp/.X11-unix/X{}", display);
 
         strncpy(addr.sun_path + 1, path.c_str(), sizeof(addr.sun_path) - 2);
     } else {
@@ -193,8 +219,10 @@ static bool safeRemove(const std::string& path) {
 }
 
 bool CXWaylandServer::tryOpenSockets() {
+    if (!ensureSocketDirExists())
+        return false;
     for (size_t i = 0; i <= MAX_SOCKET_RETRIES; ++i) {
-        std::string     lockPath = std::format("/tmp/.X{}-lock", i);
+        std::string     lockPath = lockPathForDisplay(i);
 
         CFileDescriptor fd{open(lockPath.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, LOCK_FILE_MODE)};
         if (fd.isValid()) {
@@ -254,10 +282,34 @@ CXWaylandServer::CXWaylandServer() {
 
 CXWaylandServer::~CXWaylandServer() {
     die();
+#ifdef __ANDROID__
+    if (m_serverPID > 0) {
+        int  status = 0;
+        auto reap   = [&] {
+            int result;
+            do {
+                result = waitpid(m_serverPID, &status, WNOHANG);
+            } while (result < 0 && errno == EINTR);
+            return result != 0;
+        };
+        if (!reap()) {
+            kill(m_serverPID, SIGTERM);
+            bool finished = false;
+            for (int i = 0; i < 200 && !(finished = reap()); ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (!finished) {
+                kill(m_serverPID, SIGKILL);
+                while (waitpid(m_serverPID, &status, 0) < 0 && errno == EINTR) {
+                    ;
+                }
+            }
+        }
+    }
+#endif
     if (m_display < 0)
         return;
 
-    std::string lockPath = std::format("/tmp/.X{}-lock", m_display);
+    std::string lockPath = lockPathForDisplay(m_display);
     safeRemove(lockPath);
 
     std::string path;
@@ -315,7 +367,21 @@ void CXWaylandServer::runXWayland(CFileDescriptor& notifyFD) {
 
     LOG(Log::DEBUG, "Starting XWayland with \"{}\", bon voyage!", cmd);
 
+#ifdef __ANDROID__
+    const auto executable = getenv("ARLINUX_XWAYLAND");
+    if (!executable || executable[0] != '/') {
+        LOG(Log::ERR, "ARLINUX_XWAYLAND must name the packaged Xwayland executable");
+        _exit(EXIT_FAILURE);
+    }
+    const auto listen0 = std::to_string(m_xFDs[0].get());
+    const auto listen1 = std::to_string(m_xFDs[1].get());
+    const auto notify  = std::to_string(notifyFD.get());
+    const auto wm      = std::to_string(m_xwmFDs[1].get());
+    execl(executable, "Xwayland", m_displayName.c_str(), "-rootless", "-core", "-listenfd", listen0.c_str(), "-listenfd", listen1.c_str(), "-displayfd", notify.c_str(), "-wm",
+          wm.c_str(), nullptr);
+#else
     execl("/bin/sh", "/bin/sh", "-c", cmd.c_str(), nullptr);
+#endif
 
     LOG(Log::ERR, "XWayland failed to open");
     _exit(1);
@@ -390,6 +456,9 @@ bool CXWaylandServer::start() {
         runXWayland(notifyFds[1]);
         _exit(0);
     }
+#ifdef __ANDROID__
+    m_serverPID = serverPID;
+#endif
 
     return true;
 }

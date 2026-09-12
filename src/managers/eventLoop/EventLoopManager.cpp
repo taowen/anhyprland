@@ -130,9 +130,11 @@ void CEventLoopManager::enterLoop() {
     syncPollFDs();
     m_listeners.pollFDsChanged = g_pCompositor->m_aqBackend->events.pollFDsChanged.listen([this] { syncPollFDs(); });
 
+#ifndef __ANDROID__
     // if we have a session, dispatch it to get the pending input devices
     if (g_pCompositor->m_aqBackend->hasSession())
         g_pCompositor->m_aqBackend->session->dispatchPendingEventsAsync();
+#endif
 
     wl_display_run(m_wayland.display);
 

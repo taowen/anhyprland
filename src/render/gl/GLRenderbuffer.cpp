@@ -34,7 +34,12 @@ CGLRenderbuffer::~CGLRenderbuffer() {
 CGLRenderbuffer::CGLRenderbuffer(SP<Aquamarine::IBuffer> buffer, uint32_t format) : IRenderbuffer(buffer, format) {
     auto dma = buffer->dmabuf();
 
-    m_image = g_pHyprOpenGL->createEGLImage(dma);
+#ifdef __ANDROID__
+    if (auto ahb = buffer->androidBuffer())
+        m_image = g_pHyprOpenGL->createAndroidImage(ahb);
+    else
+#endif
+        m_image = g_pHyprOpenGL->createEGLImage(dma);
     if (m_image == EGL_NO_IMAGE_KHR) {
         LOG(Log::ERR, "rb: createEGLImage failed");
         return;

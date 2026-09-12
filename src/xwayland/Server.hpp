@@ -27,10 +27,13 @@ class CXWaylandServer {
     wl_client* m_xwaylandClient = nullptr;
 
   private:
-    bool                                          tryOpenSockets();
-    void                                          runXWayland(Hyprutils::OS::CFileDescriptor& notifyFD);
+    bool        tryOpenSockets();
+    void        runXWayland(Hyprutils::OS::CFileDescriptor& notifyFD);
 
-    std::string                                   m_displayName;
+    std::string m_displayName;
+#ifdef __ANDROID__
+    int m_serverPID = -1;
+#endif
     int                                           m_display = -1;
     std::array<Hyprutils::OS::CFileDescriptor, 2> m_xFDs;
     std::array<wl_event_source*, 2>               m_xFDReadEvents = {nullptr, nullptr};

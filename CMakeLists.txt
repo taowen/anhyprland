@@ -81,8 +81,12 @@ endif()
 pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
 message(STATUS "Found wayland-protocols at ${WAYLAND_PROTOCOLS_DIR}")
 pkg_get_variable(WAYLAND_SCANNER_PKGDATA_DIR wayland-scanner pkgdatadir)
+if(NOT WAYLAND_SCANNER_PKGDATA_DIR)
+  pkg_get_variable(WAYLAND_SCANNER_PKGDATA_DIR wayland-server pkgdatadir)
+endif()
+set(WAYLAND_CORE_PROTOCOL_DIR "${WAYLAND_SCANNER_PKGDATA_DIR}" CACHE PATH "Directory containing the core wayland.xml protocol")
 message(
-  STATUS "Found wayland-scanner pkgdatadir at ${WAYLAND_SCANNER_PKGDATA_DIR}")
+  STATUS "Found Wayland core protocol at ${WAYLAND_CORE_PROTOCOL_DIR}")
 
 if(CMAKE_BUILD_TYPE MATCHES Debug OR CMAKE_BUILD_TYPE MATCHES DEBUG)
   message(STATUS "Configuring Hyprland in Debug with CMake")
@@ -264,11 +268,18 @@ set(WAYLAND_SERVER_MINIMUM_VERSION 1.22.91)
 set(WAYLAND_SERVER_PROTOCOLS_MINIMUM_VERSION 1.49)
 set(LIBINPUT_MINIMUM_VERSION 1.29)
 
+if(ANDROID)
+  set(PLATFORM_DEPS libinput>=1.26)
+  set(NO_SYSTEMD ON)
+  set(NO_HYPRPM ON)
+else()
+  set(PLATFORM_DEPS uuid libinput>=${LIBINPUT_MINIMUM_VERSION} gbm libcanberra)
+endif()
+
 pkg_check_modules(deps
   REQUIRED
   IMPORTED_TARGET GLOBAL
   xkbcommon>=${XKBCOMMON_MINIMUM_VERSION}
-  uuid
   wayland-server>=${WAYLAND_SERVER_MINIMUM_VERSION}
   wayland-protocols>=${WAYLAND_SERVER_PROTOCOLS_MINIMUM_VERSION}
   cairo
@@ -277,14 +288,12 @@ pkg_check_modules(deps
   pixman-1
   xcursor
   libdrm
-  libinput>=${LIBINPUT_MINIMUM_VERSION}
   libeis-1.0
-  gbm
   gio-2.0
   re2
   muparser
   lcms2
-  libcanberra
+  ${PLATFORM_DEPS}
 )
 
 pkg_search_module(LUA REQUIRED IMPORTED_TARGET GLOBAL lua55 lua5.5 lua-55 lua-5.5 lua>=5.5 lua<5.6)
@@ -301,8 +310,20 @@ if(USE_TRACY)
   message(STATUS "Tracy enabled, TRACY_CPP_FILES: " ${TRACY_CPP_FILES})
 endif()
 
+if(ANDROID)
+  list(FILTER SRCFILES EXCLUDE REGEX "/bell/impl/Canberra.cpp$")
+  list(FILTER SRCFILES EXCLUDE REGEX "/protocols/DRMLease.cpp$")
+  list(FILTER SRCFILES EXCLUDE REGEX "/android/Embed.cpp$")
+endif()
+
 add_library(hyprland_lib STATIC ${SRCFILES})
-add_executable(Hyprland src/main.cpp ${TRACY_CPP_FILES})
+if(ANDROID)
+  add_library(Hyprland SHARED src/android/Embed.cpp)
+  set_target_properties(Hyprland PROPERTIES OUTPUT_NAME anhyprland)
+  target_link_libraries(Hyprland android log)
+else()
+  add_executable(Hyprland src/main.cpp ${TRACY_CPP_FILES})
+endif()
 target_link_libraries(Hyprland hyprland_lib)
 
 target_include_directories(hyprland_lib PUBLIC ${deps_INCLUDE_DIRS} ${LUA_INCLUDE_DIRS})
@@ -522,7 +543,7 @@ function(protocolWayland)
            ${CMAKE_SOURCE_DIR}/protocols/wayland.hpp
     COMMAND
       hyprwayland-scanner --wayland-enums
-      ${WAYLAND_SCANNER_PKGDATA_DIR}/wayland.xml ${CMAKE_SOURCE_DIR}/protocols/
+      ${WAYLAND_CORE_PROTOCOL_DIR}/wayland.xml ${CMAKE_SOURCE_DIR}/protocols/
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   target_sources(hyprland_lib PRIVATE protocols/wayland.cpp protocols/wayland.hpp)
   target_sources(generate-protocol-headers
@@ -621,11 +642,18 @@ protocolnew("staging/ext-background-effect" "ext-background-effect-v1" false)
 
 protocolnew("${HYPRLAND_PROTOCOLS}/protocols" "hyprland-input-capture-v1"
             true)
+if(ANDROID)
+  protocolnew("protocols" "wayland-android" true)
+endif()
 protocolwayland()
 
 # tools
-add_subdirectory(hyprctl)
-add_subdirectory(start)
+if(NOT ANDROID)
+  add_subdirectory(hyprctl)
+endif()
+if(NOT ANDROID)
+  add_subdirectory(start)
+endif()
 
 if(NO_HYPRPM)
   message(STATUS "hyprpm is disabled")

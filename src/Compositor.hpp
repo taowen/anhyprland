@@ -48,33 +48,37 @@ class CCompositor {
     bool                     m_safeMode    = false;
     bool                     m_startLocked = false;
     SP<Aquamarine::CBackend> m_aqBackend;
+#ifdef __ANDROID__
+    ANativeWindow* m_androidWindow = nullptr;
+    int            m_androidWidth = 0, m_androidHeight = 0;
+#endif
 
-    std::string              m_hyprTempDataRoot = "";
+    std::string m_hyprTempDataRoot = "";
 
-    std::string              m_wlDisplaySocket   = "";
-    std::string              m_instanceSignature = "";
-    std::string              m_instancePath      = "";
-    std::string              m_currentSplash     = "error";
+    std::string m_wlDisplaySocket   = "";
+    std::string m_instanceSignature = "";
+    std::string m_instancePath      = "";
+    std::string m_currentSplash     = "error";
 
-    std::string              m_startLockedCommand = "";
+    std::string m_startLockedCommand = "";
 
-    void                     initServer(std::string socketName, int socketFd);
-    void                     startCompositor();
-    void                     stopCompositor();
-    void                     cleanup();
-    void                     bumpNofile();
-    void                     restoreNofile();
-    bool                     setWatchdogFd(int fd);
-    bool                     writeWatchdogFd(std::string);
+    void        initServer(std::string socketName, int socketFd);
+    void        startCompositor();
+    void        stopCompositor();
+    void        cleanup();
+    void        bumpNofile();
+    void        restoreNofile();
+    bool        setWatchdogFd(int fd);
+    bool        writeWatchdogFd(std::string);
 
-    bool                     m_sessionActive          = true;
-    bool                     m_dpmsStateOn            = true;
-    bool                     m_isShuttingDown         = false;
-    bool                     m_finalRequests          = false;
-    bool                     m_desktopEnvSet          = false;
-    bool                     m_wantsXwayland          = true;
-    bool                     m_onlyConfigVerification = false;
-    bool                     m_sdSessionTarget        = false;
+    bool        m_sessionActive          = true;
+    bool        m_dpmsStateOn            = true;
+    bool        m_isShuttingDown         = false;
+    bool        m_finalRequests          = false;
+    bool        m_desktopEnvSet          = false;
+    bool        m_wantsXwayland          = true;
+    bool        m_onlyConfigVerification = false;
+    bool        m_sdSessionTarget        = false;
 
     // ------------------------------------------------- //
 

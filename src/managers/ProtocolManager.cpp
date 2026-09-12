@@ -1,4 +1,7 @@
 #include "ProtocolManager.hpp"
+#ifdef __ANDROID__
+#include "../protocols/AndroidWlegl.hpp"
+#endif
 
 #include "../config/ConfigValue.hpp"
 
@@ -205,22 +208,25 @@ CProtocolManager::CProtocolManager() {
     PROTO::toplevelMapping     = makeUnique<CToplevelMappingProtocol>(&hyprland_toplevel_mapping_manager_v1_interface, 1, "ToplevelMapping");
     PROTO::globalShortcuts     = makeUnique<CGlobalShortcutsProtocol>(&hyprland_global_shortcuts_manager_v1_interface, 1, "GlobalShortcuts");
     PROTO::xdgDialog           = makeUnique<CXDGDialogProtocol>(&xdg_wm_dialog_v1_interface, 1, "XDGDialog");
-    PROTO::singlePixel         = makeUnique<CSinglePixelProtocol>(&wp_single_pixel_buffer_manager_v1_interface, 1, "SinglePixel");
-    PROTO::securityContext     = makeUnique<CSecurityContextProtocol>(&wp_security_context_manager_v1_interface, 1, "SecurityContext");
-    PROTO::ctm                 = makeUnique<CHyprlandCTMControlProtocol>(&hyprland_ctm_control_manager_v1_interface, 2, "CTMControl");
-    PROTO::inputCapture        = makeUnique<CInputCaptureProtocol>(&hyprland_input_capture_manager_v1_interface, 1, "InputCapture");
-    PROTO::hyprlandSurface     = makeUnique<CHyprlandSurfaceProtocol>(&hyprland_surface_manager_v1_interface, 2, "HyprlandSurface");
-    PROTO::contentType         = makeUnique<CContentTypeProtocol>(&wp_content_type_manager_v1_interface, 1, "ContentType");
-    PROTO::xdgTag              = makeUnique<CXDGToplevelTagProtocol>(&xdg_toplevel_tag_manager_v1_interface, 1, "XDGTag");
-    PROTO::xdgBell             = makeUnique<CXDGSystemBellProtocol>(&xdg_system_bell_v1_interface, 1, "XDGBell");
-    PROTO::hotkey              = makeUnique<CHotkeyProtocol>(&vicinae_hotkey_manager_v1_interface, 1, "Hotkey");
-    PROTO::extWorkspace        = makeUnique<CExtWorkspaceProtocol>(&ext_workspace_manager_v1_interface, 1, "ExtWorkspace");
-    PROTO::extDataDevice       = makeUnique<CExtDataDeviceProtocol>(&ext_data_control_manager_v1_interface, 1, "ExtDataDevice");
-    PROTO::pointerWarp         = makeUnique<CPointerWarpProtocol>(&wp_pointer_warp_v1_interface, 1, "PointerWarp");
-    PROTO::fifo                = makeUnique<CFifoProtocol>(&wp_fifo_manager_v1_interface, 1, "Fifo");
-    PROTO::xdgForeignExporter  = makeUnique<CXDGForeignExporterProtocolV2>(&zxdg_exporter_v2_interface, 1, "XDGForeignExporter");
-    PROTO::xdgForeignImporter  = makeUnique<CXDGForeignImporterProtocolV2>(&zxdg_importer_v2_interface, 1, "XDGForeignImporter");
-    PROTO::backgroundEffect    = makeUnique<CBackgroundEffectProtocol>(&ext_background_effect_manager_v1_interface, 1, "BackgroundEffect");
+#ifdef __ANDROID__
+    PROTO::androidWlegl = makeUnique<CAndroidWleglProtocol>();
+#endif
+    PROTO::singlePixel        = makeUnique<CSinglePixelProtocol>(&wp_single_pixel_buffer_manager_v1_interface, 1, "SinglePixel");
+    PROTO::securityContext    = makeUnique<CSecurityContextProtocol>(&wp_security_context_manager_v1_interface, 1, "SecurityContext");
+    PROTO::ctm                = makeUnique<CHyprlandCTMControlProtocol>(&hyprland_ctm_control_manager_v1_interface, 2, "CTMControl");
+    PROTO::inputCapture       = makeUnique<CInputCaptureProtocol>(&hyprland_input_capture_manager_v1_interface, 1, "InputCapture");
+    PROTO::hyprlandSurface    = makeUnique<CHyprlandSurfaceProtocol>(&hyprland_surface_manager_v1_interface, 2, "HyprlandSurface");
+    PROTO::contentType        = makeUnique<CContentTypeProtocol>(&wp_content_type_manager_v1_interface, 1, "ContentType");
+    PROTO::xdgTag             = makeUnique<CXDGToplevelTagProtocol>(&xdg_toplevel_tag_manager_v1_interface, 1, "XDGTag");
+    PROTO::xdgBell            = makeUnique<CXDGSystemBellProtocol>(&xdg_system_bell_v1_interface, 1, "XDGBell");
+    PROTO::hotkey             = makeUnique<CHotkeyProtocol>(&vicinae_hotkey_manager_v1_interface, 1, "Hotkey");
+    PROTO::extWorkspace       = makeUnique<CExtWorkspaceProtocol>(&ext_workspace_manager_v1_interface, 1, "ExtWorkspace");
+    PROTO::extDataDevice      = makeUnique<CExtDataDeviceProtocol>(&ext_data_control_manager_v1_interface, 1, "ExtDataDevice");
+    PROTO::pointerWarp        = makeUnique<CPointerWarpProtocol>(&wp_pointer_warp_v1_interface, 1, "PointerWarp");
+    PROTO::fifo               = makeUnique<CFifoProtocol>(&wp_fifo_manager_v1_interface, 1, "Fifo");
+    PROTO::xdgForeignExporter = makeUnique<CXDGForeignExporterProtocolV2>(&zxdg_exporter_v2_interface, 1, "XDGForeignExporter");
+    PROTO::xdgForeignImporter = makeUnique<CXDGForeignImporterProtocolV2>(&zxdg_importer_v2_interface, 1, "XDGForeignImporter");
+    PROTO::backgroundEffect   = makeUnique<CBackgroundEffectProtocol>(&ext_background_effect_manager_v1_interface, 1, "BackgroundEffect");
 
     if (*PENABLECT)
         PROTO::commitTiming = makeUnique<CCommitTimingProtocol>(&wp_commit_timing_manager_v1_interface, 1, "CommitTiming");
@@ -236,6 +242,7 @@ CProtocolManager::CProtocolManager() {
 
     // ! please read the top of this file before adding another protocol
 
+#ifndef __ANDROID__
     for (auto const& b : g_pCompositor->m_aqBackend->getImplementations()) {
         if (b->type() != Aquamarine::AQ_BACKEND_DRM)
             continue;
@@ -254,6 +261,8 @@ CProtocolManager::CProtocolManager() {
                 LOG(Log::WARN, "DRM Syncobj Timeline not supported, skipping explicit sync protocol");
         }
     }
+
+#endif
 
     if (!g_pHyprRenderer->getDRMFormats().empty()) {
         PROTO::mesaDRM  = makeUnique<CMesaDRMProtocol>(&wl_drm_interface, 2, "MesaDRM");
@@ -317,6 +326,9 @@ CProtocolManager::~CProtocolManager() {
     PROTO::toplevelMapping.reset();
     PROTO::globalShortcuts.reset();
     PROTO::xdgDialog.reset();
+#ifdef __ANDROID__
+    PROTO::androidWlegl.reset();
+#endif
     PROTO::singlePixel.reset();
     PROTO::securityContext.reset();
     PROTO::ctm.reset();
@@ -383,6 +395,9 @@ bool CProtocolManager::isGlobalPrivileged(const wl_global* global) {
         PROTO::presentation->getGlobal(),
         PROTO::xdgShell->getGlobal(),
         PROTO::xdgDialog->getGlobal(),
+#ifdef __ANDROID__
+        PROTO::androidWlegl->getGlobal(),
+#endif
         PROTO::singlePixel->getGlobal(),
         PROTO::primarySelection->getGlobal(),
 		PROTO::hyprlandSurface->getGlobal(),

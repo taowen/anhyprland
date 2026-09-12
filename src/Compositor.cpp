@@ -105,8 +105,10 @@ static int handleCritSignal(int signo, void* data) {
 static void handleUnrecoverableSignal(int sig) {
 
     // remove our handlers
+#ifndef __ANDROID__
     signal(SIGABRT, SIG_DFL);
     signal(SIGSEGV, SIG_DFL);
+#endif
 
     // Kill the program if the crash-reporter is caught in a deadlock.
     signal(SIGALRM, [](int _) {
@@ -191,7 +193,9 @@ CCompositor::CCompositor(bool onlyConfig) : m_onlyConfigVerification(onlyConfig)
     if (onlyConfig)
         return;
 
+#ifndef __ANDROID__
     setMallocThreshold();
+#endif
 
     const auto* XDG_RUNTIME_DIR = getenv("XDG_RUNTIME_DIR");
     m_hyprTempDataRoot          = std::format("{}/hypr", XDG_RUNTIME_DIR ? XDG_RUNTIME_DIR : "");
@@ -234,7 +238,9 @@ CCompositor::CCompositor(bool onlyConfig) : m_onlyConfigVerification(onlyConfig)
     Log::logger->initIS(m_instancePath);
 
     setRandomSplash();
+#ifndef __ANDROID__
     bumpNofile();
+#endif
 }
 
 CCompositor::~CCompositor() {
@@ -289,6 +295,7 @@ void CCompositor::initServer(std::string socketName, int socketFd) {
 
     m_wlEventLoop = wl_display_get_event_loop(m_wlDisplay);
 
+#ifndef __ANDROID__
     // register crit signal handler
     m_critSigSource = wl_event_loop_add_signal(m_wlEventLoop, SIGTERM, handleCritSignal, nullptr);
 
@@ -297,6 +304,7 @@ void CCompositor::initServer(std::string socketName, int socketFd) {
         signal(SIGABRT, handleUnrecoverableSignal);
     }
     signal(SIGUSR1, handleUserSignal);
+#endif
 
     initManagers(STAGE_PRIORITY);
 
@@ -310,9 +318,19 @@ void CCompositor::initServer(std::string socketName, int socketFd) {
     conn->setLogLevel(Log::DEBUG);
     conn->setName("aquamarine");
     options.logConnection = std::move(conn);
+#ifdef __ANDROID__
+    options.androidWindow = m_androidWindow;
+    options.androidWidth  = m_androidWidth;
+    options.androidHeight = m_androidHeight;
+#endif
 
     std::vector<Aquamarine::SBackendImplementationOptions> implementations;
     Aquamarine::SBackendImplementationOptions              option;
+#ifdef __ANDROID__
+    option.backendType        = Aquamarine::eBackendType::AQ_BACKEND_ANDROID;
+    option.backendRequestMode = Aquamarine::eBackendRequestMode::AQ_BACKEND_REQUEST_MANDATORY;
+    implementations.emplace_back(option);
+#else
     option.backendType        = Aquamarine::eBackendType::AQ_BACKEND_HEADLESS;
     option.backendRequestMode = Aquamarine::eBackendRequestMode::AQ_BACKEND_REQUEST_MANDATORY;
     implementations.emplace_back(option);
@@ -322,6 +340,8 @@ void CCompositor::initServer(std::string socketName, int socketFd) {
     option.backendType        = Aquamarine::eBackendType::AQ_BACKEND_WAYLAND;
     option.backendRequestMode = Aquamarine::eBackendRequestMode::AQ_BACKEND_REQUEST_FALLBACK;
     implementations.emplace_back(option);
+
+#endif
 
     m_aqBackend = CBackend::create(implementations, options);
 
@@ -571,8 +591,10 @@ void CCompositor::cleanup() {
 
     writeWatchdogFd("end");
 
+#ifndef __ANDROID__
     signal(SIGABRT, SIG_DFL);
     signal(SIGSEGV, SIG_DFL);
+#endif
 
     removeLockFile();
 
@@ -583,11 +605,14 @@ void CCompositor::cleanup() {
         NSystemd::sdNotify(0, "STOPPING=1");
 #endif
 
+#ifndef __ANDROID__
     cleanEnvironment();
+#endif
 
     // unload all remaining plugins while the compositor is
     // still in a normal working state.
-    g_pPluginSystem->unloadAllPlugins();
+    if (g_pPluginSystem)
+        g_pPluginSystem->unloadAllPlugins();
 
     State::Workspace::state()->clear();
     Desktop::windowState()->clear();
@@ -596,7 +621,8 @@ void CCompositor::cleanup() {
     Desktop::otherViewState()->clear();
 
     for (auto const& m : State::monitorState()->monitors()) {
-        g_pHyprOpenGL->destroyMonitorResources(m);
+        if (g_pHyprOpenGL)
+            g_pHyprOpenGL->destroyMonitorResources(m);
     }
 
     g_pXWayland.reset();
@@ -646,6 +672,10 @@ void CCompositor::cleanup() {
 
     // this frees all wayland resources, including sockets
     wl_display_destroy(m_wlDisplay);
+    m_wlDisplay     = nullptr;
+    m_wlEventLoop   = nullptr;
+    m_critSigSource = nullptr;
+    pendingOutputs.clear();
 }
 
 void CCompositor::initManagers(eManagersInitStage stage) {
@@ -671,7 +701,11 @@ void CCompositor::initManagers(eManagersInitStage stage) {
 
             LOG(Log::DEBUG, "Creating the ConfigManager!");
             if (!Config::initConfigManager())
+#ifdef __ANDROID__
+                throwError("Failed to initialize the configuration manager");
+#else
                 exit(1);
+#endif
 
             LOG(Log::DEBUG, "Creating the Error Overlay!");
             ErrorOverlay::overlay();
@@ -787,7 +821,9 @@ void CCompositor::removeLockFile() {
 }
 
 void CCompositor::startCompositor() {
+#ifndef __ANDROID__
     signal(SIGPIPE, SIG_IGN);
+#endif
 
     if (
         /* Session-less Hyprland usually means a nest, don't update the env in that case */

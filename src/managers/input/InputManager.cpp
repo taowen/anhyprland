@@ -1330,6 +1330,7 @@ void CInputManager::setupMouse(SP<IPointer> mauz) {
         LOG(Log::ERR, "Mouse had no name???"); // logic error
     }
 
+#ifndef __ANDROID__
     if (mauz->aq() && mauz->aq()->getLibinputHandle()) {
         const auto LIBINPUTDEV = mauz->aq()->getLibinputHandle();
 
@@ -1337,6 +1338,7 @@ void CInputManager::setupMouse(SP<IPointer> mauz) {
             libinput_device_config_accel_get_default_speed(LIBINPUTDEV), sc<int>(libinput_device_config_accel_get_profile(LIBINPUTDEV)),
             sc<int>(libinput_device_config_accel_get_default_profile(LIBINPUTDEV)));
     }
+#endif
 
     Pointer::mgr()->attachPointer(mauz);
 
@@ -1367,12 +1369,14 @@ void CInputManager::setPointerConfigs() {
                 m->m_connected = false;
             }
 
+#ifndef __ANDROID__
             if (m->aq() && m->aq()->getLibinputHandle()) {
                 const auto LIBINPUTDEV = m->aq()->getLibinputHandle();
                 const auto mode        = ENABLED ? LIBINPUT_CONFIG_SEND_EVENTS_ENABLED : LIBINPUT_CONFIG_SEND_EVENTS_DISABLED;
                 if (libinput_device_config_send_events_get_mode(LIBINPUTDEV) != mode)
                     libinput_device_config_send_events_set_mode(LIBINPUTDEV, mode);
             }
+#endif
 
             for (const auto tagString : CVarList2(Config::mgr()->getDeviceString(devname, "tags"))) {
                 m->m_deviceTags.emplace(std::string_view(tagString));
@@ -1384,6 +1388,7 @@ void CInputManager::setPointerConfigs() {
         else
             m->m_scrollFactor = std::nullopt;
 
+#ifndef __ANDROID__
         if (m->aq() && m->aq()->getLibinputHandle()) {
             const auto LIBINPUTDEV = m->aq()->getLibinputHandle();
 
@@ -1528,6 +1533,7 @@ void CInputManager::setPointerConfigs() {
 
             LOG(Log::DEBUG, "Applied config to mouse {}, sens {:.2f}", m->m_hlName, LIBINPUTSENS);
         }
+#endif
     }
 }
 
@@ -2055,6 +2061,7 @@ void CInputManager::newTouchDevice(SP<Aquamarine::ITouch> pDevice) {
 
 void CInputManager::setTouchDeviceConfigs(SP<ITouch> dev) {
     auto setConfig = [](SP<ITouch> PTOUCHDEV) -> void {
+#ifndef __ANDROID__
         if (PTOUCHDEV->aq() && PTOUCHDEV->aq()->getLibinputHandle()) {
             const auto LIBINPUTDEV = PTOUCHDEV->aq()->getLibinputHandle();
 
@@ -2090,6 +2097,7 @@ void CInputManager::setTouchDeviceConfigs(SP<ITouch> dev) {
             } else if (bound)
                 LOG(Log::ERR, "Failed to bind touch device {} to output '{}': monitor not found", PTOUCHDEV->m_hlName, output);
         }
+#endif
     };
 
     if (dev) {
@@ -2104,6 +2112,7 @@ void CInputManager::setTouchDeviceConfigs(SP<ITouch> dev) {
 
 void CInputManager::setTabletConfigs() {
     for (auto const& t : m_tablets) {
+#ifndef __ANDROID__
         if (t->aq()->getLibinputHandle()) {
             const auto NAME        = t->m_hlName;
             const auto LIBINPUTDEV = t->aq()->getLibinputHandle();
@@ -2147,11 +2156,13 @@ void CInputManager::setTabletConfigs() {
                                        (ACTIVE_AREA_POS.x + ACTIVE_AREA_SIZE.x) / effectivePhysicalSize.x, (ACTIVE_AREA_POS.y + ACTIVE_AREA_SIZE.y) / effectivePhysicalSize.y};
             }
         }
+#endif
     }
 }
 
 void CInputManager::setTabletToolConfigs() {
     for (auto const& t : m_tabletTools) {
+#ifndef __ANDROID__
         if (t->aq()->getLibinputTool()) {
             const auto NAME         = t->m_hlName;
             const auto LIBINPUTTOOL = t->aq()->getLibinputTool();
@@ -2171,6 +2182,7 @@ void CInputManager::setTabletToolConfigs() {
                 LIBINPUTTOOL, PRESSURE_RANGE_MIN < 0.0 ? libinput_tablet_tool_config_pressure_range_get_default_minimum(LIBINPUTTOOL) : PRESSURE_RANGE_MIN,
                 PRESSURE_RANGE_MAX < 0.0 ? libinput_tablet_tool_config_pressure_range_get_default_maximum(LIBINPUTTOOL) : PRESSURE_RANGE_MAX);
         }
+#endif
     }
 }
 
