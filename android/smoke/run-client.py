@@ -14,6 +14,6 @@ executable = '/libx11-smoke.so' if arguments == ['--x11'] else '/libshm-smoke.so
 if arguments == ['--x11']: arguments = []
 command = ['run-as', package, 'env', 'LD_LIBRARY_PATH=' + libraries,
            'XDG_RUNTIME_DIR=/data/user/0/' + package + '/files/runtime',
-           'WAYLAND_DISPLAY=' + os.environ.get('SMOKE_WAYLAND_DISPLAY', 'wayland-1'),
+           'WAYLAND_DISPLAY=' + os.environ.get('SMOKE_WAYLAND_DISPLAY', 'wayland-0'),
            'sh', '-c', 'exec ' + shlex.join([libraries + executable] + arguments)]
 raise SystemExit(subprocess.call(adb + ['shell', shlex.join(command)]))

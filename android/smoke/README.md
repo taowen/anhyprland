@@ -34,7 +34,7 @@ python3 android/smoke/run-client.py --x11
 
 The first client draws a 640×480 SHM checkerboard. The AHB clients draw four colored rectangles directly with GLES, using client allocation (android_wlegl v1) or server allocation (v2). They do not use CPU readback. The X11 client paints orange rectangles on a blue window through Xwayland. These test clients deliberately keep their fixed buffer size when tiled; unused space inside a larger Wayland tile is expected.
 
-`run-client.py` executes the packaged native client under the debug application's UID. `SMOKE_WAYLAND_DISPLAY` overrides the default `wayland-1`. The X11 probe currently connects to display 0 inside this application's runtime directory.
+`run-client.py` executes the packaged native client under the debug application's UID. `SMOKE_WAYLAND_DISPLAY` overrides the default `wayland-0`. The X11 probe currently connects to display 0 inside this application's runtime directory.
 
 Touch a window and send a key, for example `adb -s SERIAL shell input keyevent KEYCODE_A`. Wayland logs should show button 272 and key 30; X11 logs show button 1 and key 38. Press Home, then reopen the Activity: its Surface is destroyed and recreated, while the compositor PID and clients remain. Back requests a clean stop. Logcat should show `Compositor returned 0`, the host process should remain alive and its Xwayland child should disappear.
 

@@ -403,7 +403,14 @@ void CCompositor::initServer(std::string socketName, int socketFd) {
     LOG(Log::DEBUG, "DRM syncobj timeline support: no (not linux)");
 #endif
 
-    if (!socketName.empty() && socketFd != -1) {
+#ifdef __ANDROID__
+    if (!socketName.empty() && socketFd == -1) {
+        if (wl_display_add_socket(m_wlDisplay, socketName.c_str()) != 0)
+            throwError("Could not create the requested Android Wayland socket");
+        m_wlDisplaySocket = socketName;
+    } else
+#endif
+        if (!socketName.empty() && socketFd != -1) {
         fcntl(socketFd, F_SETFD, FD_CLOEXEC);
         const auto RETVAL = wl_display_add_socket_fd(m_wlDisplay, socketFd);
         if (RETVAL >= 0) {

@@ -18,6 +18,8 @@ int anhyprland_window(struct ANativeWindow* window, int width, int height);
 int anhyprland_pointer(float x, float y, uint32_t button, int pressed);
 int anhyprland_axis(float dx, float dy);
 int anhyprland_key(uint32_t evdev, int pressed);
+// Type a Unicode character available in the active layout (base or Shift level).
+int anhyprland_unicode(uint32_t codepoint);
 int anhyprland_stop(void);
 
 #ifdef __cplusplus

@@ -1,6 +1,7 @@
 #ifdef __ANDROID__
 #include "Embed.h"
 #include "../Compositor.hpp"
+#include "../managers/SeatManager.hpp"
 #include <aquamarine/backend/Android.hpp>
 #include <android/native_window.h>
 #include <android/log.h>
@@ -173,6 +174,53 @@ extern "C" int anhyprland_key(uint32_t evdev, int pressed) {
             output->key(evdev, pressed);
     });
 }
+extern "C" int anhyprland_unicode(uint32_t codepoint) {
+    if (codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff))
+        return -EINVAL;
+    return enqueue([=] {
+        auto output   = backend();
+        auto keyboard = g_pSeatManager ? g_pSeatManager->m_keyboard.lock() : nullptr;
+        if (!output || !keyboard || !keyboard->m_xkbKeymap || !keyboard->m_xkbState)
+            return;
+        auto       map    = keyboard->m_xkbKeymap;
+        const auto layout = keyboard->getActiveLayoutIndex().value_or(0);
+        const auto wanted = xkb_utf32_to_keysym(codepoint);
+        if (wanted == XKB_KEY_NoSymbol)
+            return;
+        for (auto code = xkb_keymap_min_keycode(map); code <= xkb_keymap_max_keycode(map); ++code) {
+            if (code < 8)
+                continue;
+            for (xkb_level_index_t level = 0; level < std::min<xkb_level_index_t>(2, xkb_keymap_num_levels_for_key(map, code, layout)); ++level) {
+                const xkb_keysym_t* symbols = nullptr;
+                const int           count   = xkb_keymap_key_get_syms_by_level(map, code, layout, level, &symbols);
+                bool                found   = false;
+                for (int i = 0; i < count; ++i)
+                    found = found || symbols[i] == wanted;
+                if (!found)
+                    continue;
+                const bool leftShift  = keyboard->getPressed(42);
+                const bool rightShift = keyboard->getPressed(54);
+                const bool shifted    = leftShift || rightShift;
+                if (level && !shifted)
+                    output->key(42, true);
+                if (!level && leftShift)
+                    output->key(42, false);
+                if (!level && rightShift)
+                    output->key(54, false);
+                output->key(code - 8, true);
+                output->key(code - 8, false);
+                if (level && !shifted)
+                    output->key(42, false);
+                if (!level && leftShift)
+                    output->key(42, true);
+                if (!level && rightShift)
+                    output->key(54, true);
+                return;
+            }
+        }
+    });
+}
+
 extern "C" int anhyprland_stop() {
     return enqueue([] { g_pCompositor->stopCompositor(); });
 }
