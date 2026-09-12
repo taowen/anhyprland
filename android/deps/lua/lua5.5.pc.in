@@ -1,0 +1,6 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+Name: Lua
+Description: Lua language runtime
+Version: 5.5.0
+Cflags: -I${prefix}/include/lua5.5
+Libs: -L${prefix}/lib -llua5.5

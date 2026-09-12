@@ -1,0 +1,10 @@
+prefix=@PREFIX@
+includedir=@INCLUDE@
+libdir=@LIBDIR@
+
+Name: aquamarine
+Description: Aquamarine with the Android Surface and AHardwareBuffer backend
+Version: @AQUAMARINE_VERSION@
+Requires: hyprutils pixman-1 libdrm
+Libs: -L${libdir} -laquamarine
+Cflags: -I${includedir}

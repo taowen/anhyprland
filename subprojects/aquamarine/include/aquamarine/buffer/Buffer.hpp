@@ -6,6 +6,10 @@
 #include <hyprutils/math/Region.hpp>
 #include "../misc/Attachment.hpp"
 
+#ifdef __ANDROID__
+struct AHardwareBuffer;
+#endif
+
 namespace Aquamarine {
     enum eBufferCapability : uint32_t {
         BUFFER_CAPABILITY_NONE    = 0,
@@ -52,6 +56,9 @@ namespace Aquamarine {
         virtual bool                                   good()          = 0;
         virtual SDMABUFAttrs                           dmabuf();
         virtual SSHMAttrs                              shm();
+#ifdef __ANDROID__
+        virtual AHardwareBuffer*                       androidBuffer();
+#endif
         virtual std::tuple<uint8_t*, uint32_t, size_t> beginDataPtr(uint32_t flags);
         virtual void                                   endDataPtr();
         virtual void                                   sendRelease();

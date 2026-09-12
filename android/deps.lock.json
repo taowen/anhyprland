@@ -1,0 +1,94 @@
+{
+  "hyprlang": {
+    "url": "https://github.com/hyprwm/hyprlang.git",
+    "commit": "9508458be316a0d70d37ebed1ab725ccd10411ff"
+  },
+  "hyprutils": {
+    "url": "https://github.com/hyprwm/hyprutils.git",
+    "commit": "a21e87b878e72ee5dfd375899e8b2ad0d0c4c0e1"
+  },
+  "hyprcursor": {
+    "url": "https://github.com/hyprwm/hyprcursor.git",
+    "commit": "e4ed7c08123df5af460a0a70961380cbfb872f76"
+  },
+  "pugixml": {
+    "url": "https://github.com/zeux/pugixml.git",
+    "commit": "27b68329de32cf9c601ca8eb6c588fd639960c40"
+  },
+  "hyprgraphics": {
+    "url": "https://github.com/hyprwm/hyprgraphics.git",
+    "commit": "7c895c44e3ca6d28ed68ddd80ec02b02b925e7fc"
+  },
+  "glslang": {
+    "url": "https://github.com/KhronosGroup/glslang.git",
+    "commit": "516724d96aa3b06dda3de642d55581adf8c2fdf3"
+  },
+  "muparser": {
+    "url": "https://github.com/beltoforion/muparser.git",
+    "commit": "508cce97d983c4c61099ceacc11c984a60053967"
+  },
+  "hyprwayland-scanner": {
+    "url": "https://github.com/hyprwm/hyprwayland-scanner.git",
+    "commit": "62e62c1ca23da17612c6890d4ad2064f575643db"
+  },
+  "re2": {
+    "url": "https://github.com/google/re2.git",
+    "commit": "5723bb8950318135ed9cf4fc76bed988a087f536"
+  },
+  "libjpeg-turbo": {
+    "url": "https://github.com/libjpeg-turbo/libjpeg-turbo.git",
+    "commit": "7b5fee3f7a83b5c2bdbb52d5dd6ce6bfc53b6b58"
+  },
+  "lcms": {
+    "url": "https://github.com/mm2/Little-CMS.git",
+    "commit": "ad3c8a831074eec05c96f1b3c580ce0464b2fdc3"
+  },
+  "tomlplusplus": {
+    "url": "https://github.com/marzer/tomlplusplus.git",
+    "commit": "1e8829b793b66ad17011732a146b8077d379b011"
+  },
+  "libeis": {
+    "url": "https://gitlab.freedesktop.org/libinput/libei.git",
+    "commit": "a9bf31da06f06bfce73702191c3db93aae289459"
+  },
+  "libwebp": {
+    "url": "https://chromium.googlesource.com/webm/libwebp",
+    "commit": "1f346354b670aeb804cb68fcd7e1718a1b8ea555"
+  },
+  "libzip": {
+    "url": "https://github.com/nih-at/libzip.git",
+    "commit": "3be8f33658839d25506a82836868f277aa3660f7"
+  },
+  "libxcb-errors": {
+    "url": "https://gitlab.freedesktop.org/xorg/lib/libxcb-errors.git",
+    "commit": "b90bcfbb7a41716a40fe7fb11518cc89190dbe85"
+  },
+  "libxcursor": {
+    "url": "https://gitlab.freedesktop.org/xorg/lib/libxcursor.git",
+    "commit": "15efad7ccd035f5d1ddc8d437e047569d1775fa7"
+  },
+  "file": {
+    "url": "https://github.com/file/file.git",
+    "commit": "5e57b94cdd3f2bc2f6db8581dcce76a89fc9c9f7"
+  },
+  "lunasvg": {
+    "url": "https://github.com/sammycage/lunasvg.git",
+    "commit": "2a6a43a54de815dc8b7ab96a29ecac1555f610bd"
+  },
+  "libxrender": {
+    "url": "https://gitlab.freedesktop.org/xorg/lib/libxrender.git",
+    "commit": "f32afe9f877ae032c6bc9c27b17b7978b1b4c856"
+  },
+  "libxfixes": {
+    "url": "https://gitlab.freedesktop.org/xorg/lib/libxfixes.git",
+    "commit": "55bb2d1d57d43e0595ce45393f26eb433d75a7cc"
+  },
+  "wayland-protocols": {
+    "url": "https://gitlab.freedesktop.org/wayland/wayland-protocols.git",
+    "commit": "819004adb3ab7e46f3fa3caef05b96e20434b244"
+  },
+  "lua": {
+    "url": "https://github.com/lua/lua.git",
+    "commit": "a5522f06d2679b8f18534fd6a9968f7eb539dc31"
+  }
+}

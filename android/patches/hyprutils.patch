@@ -1,0 +1,41 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index abb9c5f..2696162 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -44,7 +44,7 @@ file(GLOB_RECURSE SRCFILES CONFIGURE_DEPENDS "src/*.cpp" "include/*.hpp")
+ file(GLOB_RECURSE PUBLIC_HEADERS CONFIGURE_DEPENDS "include/*.hpp")
+ list(FILTER SRCFILES EXCLUDE REGEX "eventLoop/backend/(Epoll|Kqueue)\\.cpp$")
+ 
+-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
++if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
+   list(APPEND SRCFILES "${CMAKE_CURRENT_SOURCE_DIR}/src/eventLoop/backend/Epoll.cpp")
+ elseif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD|OpenBSD|NetBSD|DragonFly")
+   find_package(Threads REQUIRED)
+diff --git a/src/os/Semaphore.cpp b/src/os/Semaphore.cpp
+index 6877741..7cb870a 100644
+--- a/src/os/Semaphore.cpp
++++ b/src/os/Semaphore.cpp
+@@ -8,12 +8,23 @@
+ #include <unistd.h>
+ 
+ #include <format>
++#include <cstdlib>
++#include <cstring>
+ 
+ using namespace Hyprutils;
+ using namespace Hyprutils::OS;
+ 
+ CSemaphore::CSemaphore(const char* name) {
++#ifdef __ANDROID__
++    const auto runtime = std::getenv("XDG_RUNTIME_DIR");
++    if (!runtime || !name || std::strchr(name, '/')) {
++        errno = EINVAL;
++        return;
++    }
++    m_fd = open(std::format("{}/hu_{}", runtime, name).c_str(), O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600);
++#else
+     m_fd = shm_open(std::format("/hu_{}", name).c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
++#endif
+ 
+     if (m_fd == -1)
+         return;

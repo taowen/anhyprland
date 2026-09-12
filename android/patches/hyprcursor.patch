@@ -1,0 +1,69 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c1474c7..8f0b519 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -32,6 +32,11 @@ add_compile_options(
+ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+ 
+ find_package(PkgConfig REQUIRED)
++if(ANDROID)
++  set(SVG_DEPENDENCY lunasvg)
++else()
++  set(SVG_DEPENDENCY librsvg-2.0)
++endif()
+ pkg_check_modules(
+   deps
+   REQUIRED
+@@ -39,7 +44,7 @@ pkg_check_modules(
+   hyprlang>=0.4.2
+   libzip
+   cairo
+-  librsvg-2.0
++  ${SVG_DEPENDENCY}
+   tomlplusplus)
+ 
+ if(CMAKE_BUILD_TYPE MATCHES Debug OR CMAKE_BUILD_TYPE MATCHES DEBUG)
+diff --git a/libhyprcursor/hyprcursor.cpp b/libhyprcursor/hyprcursor.cpp
+index 7c71538..71c53a8 100644
+--- a/libhyprcursor/hyprcursor.cpp
++++ b/libhyprcursor/hyprcursor.cpp
+@@ -10,7 +10,11 @@
+ #include <cstring>
+ #include <algorithm>
+ #include <cmath>
++#ifdef __ANDROID__
++#include <lunasvg.h>
++#else
+ #include <librsvg/rsvg.h>
++#endif
+ 
+ #include "manifest.hpp"
+ #include "meta.hpp"
+@@ -556,6 +560,19 @@ bool CHyprcursorManager::loadThemeStyle(const SCursorStyleInfo& info) {
+                 cairo_paint(PCAIRO);
+                 cairo_restore(PCAIRO);
+ 
++#ifdef __ANDROID__
++                auto document = lunasvg::Document::loadFromData(static_cast<const char*>(f->data), f->dataLen);
++                auto bitmap = document ? document->renderToBitmap(PIXELSIDE, PIXELSIDE) : lunasvg::Bitmap{};
++                if (bitmap.isNull()) {
++                    Debug::log(HC_LOG_ERR, logFn, "Failed rendering SVG cursor with LunaSVG");
++                    cairo_destroy(PCAIRO);
++                    return false;
++                }
++                for (int row = 0; row < PIXELSIDE; ++row)
++                    std::memcpy(static_cast<char*>(newImage->artificialData) + row * PIXELSIDE * 4, bitmap.data() + row * bitmap.stride(), PIXELSIDE * 4);
++                cairo_surface_mark_dirty(newImage->cairoSurface);
++                cairo_destroy(PCAIRO);
++#else
+                 GError*     error  = nullptr;
+                 RsvgHandle* handle = rsvg_handle_new_from_data((unsigned char*)f->data, f->dataLen, &error);
+ 
+@@ -576,6 +593,7 @@ bool CHyprcursorManager::loadThemeStyle(const SCursorStyleInfo& info) {
+                 cairo_surface_flush(newImage->cairoSurface);
+                 cairo_destroy(PCAIRO);
+                 g_object_unref(handle);
++#endif
+             }
+         } else {
+             Debug::log(HC_LOG_ERR, logFn, "Invalid shapetype in loadThemeStyle");

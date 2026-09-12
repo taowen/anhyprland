@@ -1,0 +1,15 @@
+diff --git a/meson.build b/meson.build
+index 3a23ff5..1bf1875 100644
+--- a/meson.build
++++ b/meson.build
+@@ -136,7 +136,9 @@ configure_file(output: 'config.h', configuration: config_h)
+ 
+ subdir('proto')
+ subdir('src')
+-subdir('tools')
++if host_machine.system() != 'android'
++    subdir('tools')
++endif
+ subdir('test')
+ subdir('doc')
+ 

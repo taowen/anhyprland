@@ -12,6 +12,10 @@
 #include "Misc.hpp"
 #include "Session.hpp"
 
+#ifdef __ANDROID__
+struct ANativeWindow;
+#endif
+
 namespace Aquamarine {
     class CLogger;
     class IOutput;
@@ -28,6 +32,7 @@ namespace Aquamarine {
         AQ_BACKEND_DRM,
         AQ_BACKEND_HEADLESS,
         AQ_BACKEND_NULL,
+        AQ_BACKEND_ANDROID,
     };
 
     enum eBackendGPUDriver : uint32_t {
@@ -72,6 +77,10 @@ namespace Aquamarine {
         explicit SBackendOptions();
         std::function<void(eBackendLogLevel, std::string)>                   logFunction;
         Hyprutils::Memory::CSharedPointer<Hyprutils::CLI::CLoggerConnection> logConnection;
+#ifdef __ANDROID__
+        ANativeWindow* androidWindow = nullptr;
+        int androidWidth = 0, androidHeight = 0;
+#endif
     };
 
     struct SPollFD {

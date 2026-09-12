@@ -1,9 +1,13 @@
 #include <aquamarine/backend/Backend.hpp>
+#ifdef __ANDROID__
+#include <aquamarine/backend/Android.hpp>
+#else
 #include <aquamarine/backend/Wayland.hpp>
 #include <aquamarine/backend/Headless.hpp>
 #include <aquamarine/backend/DRM.hpp>
 #include <aquamarine/backend/Null.hpp>
 #include <aquamarine/allocator/GBM.hpp>
+#endif
 #include <hyprutils/os/FileDescriptor.hpp>
 #include <ranges>
 #include <sys/timerfd.h>
@@ -37,6 +41,7 @@ static void timespecAddNs(timespec* pTimespec, int64_t delta) {
 
 static const char* backendTypeToName(eBackendType type) {
     switch (type) {
+        case AQ_BACKEND_ANDROID: return "android";
         case AQ_BACKEND_DRM: return "drm";
         case AQ_BACKEND_HEADLESS: return "headless";
         case AQ_BACKEND_WAYLAND: return "wayland";
@@ -75,6 +80,15 @@ Hyprutils::Memory::CSharedPointer<CBackend> Aquamarine::CBackend::create(const s
     backend->log(AQ_LOG_DEBUG, "Creating an Aquamarine backend!");
 
     for (auto const& b : backends) {
+#ifdef __ANDROID__
+        if (b.backendType == AQ_BACKEND_ANDROID) {
+            auto ref = makeShared<CAndroidBackend>(backend, options.androidWindow, options.androidWidth, options.androidHeight);
+            ref->self = ref;
+            backend->implementations.emplace_back(ref);
+        } else {
+            backend->log(AQ_LOG_ERROR, "Only the Android backend is available in this build");
+        }
+#else
         if (b.backendType == AQ_BACKEND_WAYLAND) {
             auto ref = SP<CWaylandBackend>(new CWaylandBackend(backend));
             backend->implementations.emplace_back(ref);
@@ -101,6 +115,7 @@ Hyprutils::Memory::CSharedPointer<CBackend> Aquamarine::CBackend::create(const s
             backend->log(AQ_LOG_ERROR, std::format("Unknown backend id: {}", (int)b.backendType));
             continue;
         }
+#endif
     }
 
     // create a timerfd for idle events
@@ -159,6 +174,14 @@ bool Aquamarine::CBackend::start() {
         return failed;
     });
 
+#ifdef __ANDROID__
+    for (const auto& b : implementations) {
+        if (b->type() == AQ_BACKEND_ANDROID) {
+            primaryAllocator = b->preferredAllocator();
+            break;
+        }
+    }
+#else
     // TODO: obviously change this when (if) we add different allocators.
     for (auto const& b : implementations) {
         if (b->drmFD() >= 0) {
@@ -173,6 +196,8 @@ bool Aquamarine::CBackend::start() {
         }
     }
 
+#endif
+
     if (!primaryAllocator && (implementations.empty() || implementations.at(0)->type() != AQ_BACKEND_NULL)) {
         log(AQ_LOG_CRITICAL, "Cannot open backend: no allocator available");
         return false;
@@ -183,10 +208,12 @@ bool Aquamarine::CBackend::start() {
         b->onReady();
     }
 
+#ifndef __ANDROID__
     if (session)
         session->onReady();
 
     sessionFDs = session ? session->pollFDs() : std::vector<Hyprutils::Memory::CSharedPointer<SPollFD>>{};
+#endif
 
     return true;
 }
@@ -305,6 +332,7 @@ void Aquamarine::CBackend::dispatchIdle() {
 }
 
 void Aquamarine::CBackend::onNewGpu(std::string path) {
+#ifndef __ANDROID__
     const auto primary    = std::ranges::find_if(implementations, [](SP<IBackendImplementation> value) { return value->type() == Aquamarine::AQ_BACKEND_DRM; });
     const auto primaryDrm = primary != implementations.end() ? ((Aquamarine::CDRMBackend*)(*primary).get())->self.lock() : nullptr;
 
@@ -323,6 +351,7 @@ void Aquamarine::CBackend::onNewGpu(std::string path) {
 
     ref->onReady();        // Renderer created here
     ref->recheckOutputs(); // Now we can recheck outputs
+#endif
 }
 
 // Yoinked from wlroots, render/allocator/allocator.c
