@@ -1,0 +1,582 @@
+#pragma once
+
+#include "./Backend.hpp"
+#include "../allocator/Swapchain.hpp"
+#include "../output/Output.hpp"
+#include "../input/Input.hpp"
+#include "FrameScheduler.hpp"
+#include <hyprutils/memory/WeakPtr.hpp>
+#include <hyprutils/memory/Atomic.hpp>
+#include <wayland-client.h>
+#include <xf86drmMode.h>
+#include <memory>
+#include <optional>
+
+namespace Aquamarine {
+    class CDRMBackend;
+    class CDRMFB;
+    class CDRMOutput;
+    struct SDRMConnector;
+    class CDRMRenderer;
+    class CDRMDumbAllocator;
+    class CDRMCommitThread;
+    class CDRMCursorPositionMailbox;
+    class CDRMAsyncCommitData;
+    struct SDRMConnectorCommitData;
+
+    using DRMFBList = std::vector<Hyprutils::Memory::CSharedPointer<CDRMFB>>;
+
+    typedef std::function<void(void)> FIdleCallback;
+
+    class CDRMBufferAttachment : public IAttachment {
+      public:
+        CDRMBufferAttachment(Hyprutils::Memory::CSharedPointer<CDRMFB> fb_);
+        virtual ~CDRMBufferAttachment() {
+            ;
+        }
+
+        Hyprutils::Memory::CSharedPointer<CDRMFB> fb;
+    };
+
+    class CDRMBufferUnimportable : public IAttachment {
+      public:
+        CDRMBufferUnimportable() {
+            ;
+        }
+        virtual ~CDRMBufferUnimportable() {
+            ;
+        }
+    };
+
+    class CDRMLease {
+      public:
+        static Hyprutils::Memory::CSharedPointer<CDRMLease> create(std::vector<Hyprutils::Memory::CSharedPointer<IOutput>> outputs);
+        ~CDRMLease();
+
+        void                                                     terminate();
+
+        int                                                      leaseFD  = -1;
+        uint32_t                                                 lesseeID = 0;
+        Hyprutils::Memory::CWeakPointer<CDRMBackend>             backend;
+        std::vector<Hyprutils::Memory::CWeakPointer<CDRMOutput>> outputs;
+        bool                                                     active = true;
+
+        struct {
+            Hyprutils::Signal::CSignalT<> destroy;
+        } events;
+
+      private:
+        CDRMLease() = default;
+
+        void destroy();
+
+        friend class CDRMBackend;
+    };
+
+    class CDRMFB {
+      public:
+        ~CDRMFB();
+
+        static Hyprutils::Memory::CSharedPointer<CDRMFB> create(Hyprutils::Memory::CSharedPointer<IBuffer> buffer_, Hyprutils::Memory::CWeakPointer<CDRMBackend> backend_,
+                                                                bool* isNew = nullptr);
+
+        void                                             closeHandles();
+        // drops the buffer from KMS
+        void drop();
+
+        // re-imports the buffer into KMS. Essentially drop and import.
+        void                                         reimport();
+
+        uint32_t                                     id = 0;
+        Hyprutils::Memory::CWeakPointer<IBuffer>     buffer;
+        Hyprutils::Memory::CWeakPointer<CDRMBackend> backend;
+        std::array<uint32_t, 4>                      boHandles = {0, 0, 0, 0};
+
+        // true if the original buffer is gone and this has been released.
+        bool dead = false;
+
+      private:
+        CDRMFB(Hyprutils::Memory::CSharedPointer<IBuffer> buffer_, Hyprutils::Memory::CWeakPointer<CDRMBackend> backend_);
+        uint32_t submitBuffer();
+        void     import();
+
+        bool     dropped = false, handlesClosed = false;
+
+        struct {
+            Hyprutils::Signal::CHyprSignalListener destroyBuffer;
+        } listeners;
+    };
+
+    struct SDRMLayer {
+        // we expect the consumers to use double-buffering, so we keep the 2 last FBs around. If any of these goes out of
+        // scope, the DRM FB will be destroyed, but the IBuffer will stay, as long as it's ref'd somewhere.
+        Hyprutils::Memory::CSharedPointer<CDRMFB>    front /* currently displaying */, back /* submitted */, last /* keep just in case */;
+        Hyprutils::Memory::CWeakPointer<CDRMBackend> backend;
+    };
+
+    struct SDRMPlane {
+        bool                                         init(drmModePlane* plane);
+
+        uint64_t                                     type      = 0;
+        uint32_t                                     id        = 0;
+        uint32_t                                     initialID = 0;
+
+        Hyprutils::Memory::CSharedPointer<CDRMFB>    front /* currently displaying */, back /* submitted */, last /* keep just in case */;
+        Hyprutils::Memory::CWeakPointer<CDRMBackend> backend;
+        Hyprutils::Memory::CWeakPointer<SDRMPlane>   self;
+        bool                                         backSet = false;
+        std::vector<SDRMFormat>                      formats;
+
+        union UDRMPlaneProps {
+            struct {
+                uint32_t type;
+                uint32_t rotation;   // Not guaranteed to exist
+                uint32_t in_formats; // Not guaranteed to exist
+
+                // atomic-modesetting only
+
+                uint32_t src_x;
+                uint32_t src_y;
+                uint32_t src_w;
+                uint32_t src_h;
+                uint32_t crtc_x;
+                uint32_t crtc_y;
+                uint32_t crtc_w;
+                uint32_t crtc_h;
+                uint32_t fb_id;
+                uint32_t crtc_id;
+                uint32_t fb_damage_clips;
+                uint32_t hotspot_x;
+                uint32_t hotspot_y;
+                uint32_t in_fence_fd;
+                uint32_t color_range;
+            } values;
+            uint32_t props[18] = {0};
+        };
+        UDRMPlaneProps props;
+
+        // only valid when color_range != 0
+        union UDRMPlaneColorRange {
+            struct {
+                uint32_t Full_YCbCr;
+                uint32_t Limited_YCbCr;
+            } values;
+            uint32_t props[2] = {0};
+        };
+        UDRMPlaneColorRange colorRange;
+    };
+
+    struct SDRMCRTC {
+        uint32_t               id = 0;
+        std::vector<SDRMLayer> layers;
+        int32_t                refresh = 0; // unused
+
+        struct {
+            std::optional<uintptr_t>                       id; // nullopt when nothing is in flight
+            Hyprutils::Memory::CWeakPointer<SDRMConnector> connector;
+            bool                                           async       = false; // PAGE_FLIP_ASYNC
+            uint64_t                                       commitID    = 0;
+            bool                                           resultReady = true;
+
+            struct {
+                bool         valid = false;
+                unsigned int seq   = 0;
+                unsigned int sec   = 0;
+                unsigned int usec  = 0;
+            } early;
+        } pendingFlip;
+
+        uintptr_t armPageFlip(Hyprutils::Memory::CWeakPointer<SDRMConnector> connector, bool async, std::optional<uintptr_t> id = std::nullopt, uint64_t commitID = 0,
+                              bool resultReady = true);
+        void      disarmPageFlip();
+
+        struct {
+            int gammaSize = 0;
+        } legacy;
+
+        struct {
+            bool     ownModeID = false;
+            uint32_t modeID    = 0;
+            uint32_t gammaLut  = 0;
+            uint32_t ctm       = 0;
+            uint32_t hdr       = 0;
+            // true once a real commit has made the kernel CTM match our state.
+            bool ctmStateKnown = false;
+        } atomic;
+
+        Hyprutils::Memory::CSharedPointer<SDRMPlane> primary;
+        Hyprutils::Memory::CSharedPointer<SDRMPlane> cursor;
+        Hyprutils::Memory::CWeakPointer<CDRMBackend> backend;
+        Hyprutils::Memory::CSharedPointer<CDRMFB>    pendingCursor;
+
+        union UDRMCRTCProps {
+            struct {
+                // None of these are guaranteed to exist
+                uint32_t vrr_enabled;
+                uint32_t gamma_lut;
+                uint32_t gamma_lut_size;
+                uint32_t ctm;
+                uint32_t degamma_lut;
+                uint32_t degamma_lut_size;
+
+                // atomic-modesetting only
+
+                uint32_t active;
+                uint32_t mode_id;
+                uint32_t out_fence_ptr;
+            } values;
+            uint32_t props[9] = {0};
+        };
+        UDRMCRTCProps props;
+    };
+
+    class CDRMOutput : public IOutput {
+      public:
+        virtual ~CDRMOutput();
+        virtual bool                                                      commit();
+        virtual bool                                                      test();
+        virtual Hyprutils::Memory::CSharedPointer<IBackendImplementation> getBackend();
+        virtual bool                                                      setCursor(Hyprutils::Memory::CSharedPointer<IBuffer> buffer, const Hyprutils::Math::Vector2D& hotspot);
+        virtual void                                                      moveCursor(const Hyprutils::Math::Vector2D& coord, bool skipSchedule = false);
+        virtual void                                                      scheduleFrame(const scheduleFrameReason reason = AQ_SCHEDULE_UNKNOWN);
+        virtual void                                                      setCursorVisible(bool visible);
+        virtual bool                                                      hasCursorPlane() const;
+        virtual Hyprutils::Math::Vector2D                                 cursorPlaneSize();
+        virtual std::optional<std::chrono::steady_clock::time_point>      nextVBlank() const;
+        virtual size_t                                                    getGammaSize();
+        virtual size_t                                                    getDeGammaSize();
+        virtual std::vector<SDRMFormat>                                   getRenderFormats();
+        virtual bool                                                      pendingPageFlip();
+        virtual bool                                                      pendingIdleFrame();
+        virtual uint32_t                                                  commitCapabilities() const;
+        virtual SCommitSubmission                                         commitAsync(const SCommitOptions& options);
+        void                                                              releaseMgpuResources();
+
+        int                                                               getConnectorID();
+
+        Hyprutils::Memory::CWeakPointer<CDRMOutput>                       self;
+        Hyprutils::Memory::CWeakPointer<CDRMLease>                        lease;
+        bool                                                              cursorVisible = true;
+        Hyprutils::Math::Vector2D                                         cursorPos; // without hotspot
+        Hyprutils::Math::Vector2D                                         cursorHotspot;
+
+        bool enabledState = true; // actual enabled state. Should be synced with state->state().enabled after a new frame
+
+      private:
+        CDRMOutput(const std::string& name_, Hyprutils::Memory::CWeakPointer<CDRMBackend> backend_, Hyprutils::Memory::CSharedPointer<SDRMConnector> connector_);
+
+        bool commitState(bool onlyTest = false);
+        bool prepareAsyncCommitData(const COutputState::CSnapshot& snapshot, SDRMConnectorCommitData& data, Hyprutils::OS::CFileDescriptor& mgpuFence, bool& mgpuAcquired,
+                                    bool& requiresSync);
+
+        Hyprutils::Memory::CWeakPointer<CDRMBackend>                 backend;
+        Hyprutils::Memory::CSharedPointer<SDRMConnector>             connector;
+        Hyprutils::Memory::CSharedPointer<std::function<void(void)>> frameIdle;
+        Hyprutils::Signal::CHyprSignalListener                       frameReadyListener;
+        Hyprutils::Signal::CHyprSignalListener                       rescheduleListener;
+
+        struct {
+            Hyprutils::Memory::CSharedPointer<CSwapchain> swapchain;
+            Hyprutils::Memory::CSharedPointer<CSwapchain> cursorSwapchain;
+        } mgpu;
+
+        bool                                                               lastCommitNoBuffer = true;
+        uint64_t                                                           asyncOwnerID = 0, pendingAsyncCommit = 0;
+        bool                                                               asyncCommitEventPending = false;
+        Hyprutils::Memory::CAtomicSharedPointer<CDRMCursorPositionMailbox> cursorMailbox;
+
+        friend struct SDRMConnector;
+        friend class CDRMLease;
+        friend class CDRMBackend;
+    };
+
+    struct SDRMConnectorCommitData {
+        Hyprutils::Memory::CSharedPointer<CDRMFB> mainFB, cursorFB;
+        COutputState::SInternalState              outputState;
+        Hyprutils::Math::Vector2D                 cursorPos, cursorHotspot;
+        bool                                      cursorVisible    = false;
+        bool                                      modeset          = false;
+        bool                                      blocking         = false;
+        uint32_t                                  flags            = 0;
+        bool                                      test             = false;
+        bool                                      enabled          = false;
+        uint32_t                                  committed        = 0;
+        bool                                      primaryFBChanged = false, cursorFBChanged = false;
+        DRMFBList                                 retiredFBs;
+        Hyprutils::Math::CRegion                  damage;
+        drmModeModeInfo                           modeInfo;
+        std::optional<Hyprutils::Math::Mat3x3>    ctm;
+        std::optional<hdr_output_metadata>        hdrMetadata;
+
+        struct {
+            uint32_t gammaLut   = 0;
+            uint32_t degammaLut = 0;
+            uint32_t fbDamage   = 0;
+            uint32_t modeBlob   = 0;
+            uint32_t ctmBlob    = 0;
+            uint32_t hdrBlob    = 0;
+            bool     blobbed    = false;
+            bool     gammad     = false;
+            bool     degammad   = false;
+            bool     ctmd       = false;
+            bool     hdrd       = false; // true if hdr blob needs updating or clearing
+
+            // staged connector property values for this commit. on a successful non-test
+            // commit these are copied into SDRMConnector::atomic so subsequent page-flips
+            // can skip re-emitting unchanged values (some displays, notably samsung TVs,
+            // renegotiate the avi infoframe whenever connector_state appears in a commit,
+            // causing per-frame blanking, see #265).
+            uint64_t maxBpc      = 0;
+            uint64_t colorspace  = 0;
+            uint16_t contentType = 0;
+            uint32_t crtcID      = 0;
+
+            // true if the max_bpc property was actually added to the atomic request
+            // (i.e. not skipped as an unchanged cached value on a page-flip). only when
+            // this is set may a commit failure be attributed to max_bpc and trigger the
+            // max_bpc-less retry / maxBpcFailed workaround (see amdgpu eDP handling).
+            bool maxBpcEmitted = false;
+        } atomic;
+
+        void calculateMode(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector);
+    };
+
+    struct SDRMConnector {
+        ~SDRMConnector();
+
+        struct STileInfo {
+            uint32_t groupId         = 0;
+            bool     isSingleMonitor = false;
+            int      numHTile = 0, numVTile = 0;
+            int      tileHLoc = 0, tileVLoc = 0;
+            int      tileHSize = 0, tileVSize = 0;
+        };
+
+        bool                                           init(drmModeConnector* connector);
+        void                                           connect(drmModeConnector* connector);
+        void                                           disconnect();
+        Hyprutils::Memory::CSharedPointer<SDRMCRTC>    getCurrentCRTC(const drmModeConnector* connector);
+        drmModeModeInfo*                               getCurrentMode();
+        IOutput::SParsedEDID                           parseEDID(std::vector<uint8_t> data);
+        bool                                           commitState(SDRMConnectorCommitData& data);
+        void                                           applyCommit(SDRMConnectorCommitData& data);
+        void                                           onPresent(bool primary = true, bool cursor = true, DRMFBList* retired = nullptr);
+        void                                           recheckCRTCProps();
+        void                                           parseTileInfo();
+        void                                           releaseFBBuffer(const Hyprutils::Memory::CSharedPointer<CDRMFB> fb);
+        void                                           releaseFBReferences(DRMFBList* retired = nullptr);
+        void                                           invalidateFrame();
+        void                                           setCRTC(Hyprutils::Memory::CSharedPointer<SDRMCRTC> newCRTC);
+
+        Hyprutils::Memory::CSharedPointer<CDRMOutput>  output;
+        Hyprutils::Memory::CWeakPointer<CDRMBackend>   backend;
+        Hyprutils::Memory::CWeakPointer<SDRMConnector> self;
+        std::string                                    szName;
+        drmModeConnection                              status       = DRM_MODE_DISCONNECTED;
+        uint32_t                                       id           = 0;
+        std::array<uint64_t, 2>                        maxBpcBounds = {0, 0};
+        Hyprutils::Memory::CSharedPointer<SDRMCRTC>    crtc;
+        int32_t                                        refresh       = 0;
+        uint32_t                                       possibleCrtcs = 0;
+        std::string                                    make, serial, model;
+        bool                                           canDoVrr = false;
+
+        STileInfo                                      tileInfo;
+        bool                                           tilingRedundant = false;
+        Hyprutils::Math::Vector2D                      maxMode;
+
+        bool                                           cursorEnabled = false;
+        Hyprutils::Math::Vector2D                      cursorPos, cursorSize, cursorHotspot;
+
+        CFrameScheduler                                sched;
+
+        // the current state is invalid and won't commit, don't try to modeset.
+        bool commitTainted = false;
+
+        // set when an atomic commit with max_bpc fails; skips max_bpc on future
+        // commits for this connector (works around buggy drivers, e.g. amdgpu eDP).
+        bool                                           maxBpcFailed = false;
+
+        Hyprutils::Memory::CSharedPointer<SOutputMode> fallbackMode;
+
+        struct {
+            bool vrrEnabled = false;
+
+            // last connector_state values successfully committed to the kernel. used
+            // to skip re-emitting unchanged values on page-flips (see #265).
+            uint64_t          maxBpc      = 0;
+            uint64_t          colorspace  = 0;
+            uint16_t          contentType = 0;
+            uint32_t          crtcID      = 0;
+            bool              propsCached = false;
+            eOutputColorRange colorRange  = AQ_OUTPUT_COLOR_RANGE_AUTO;
+        } atomic;
+
+        union UDRMConnectorProps {
+            struct {
+                uint32_t edid;
+                uint32_t dpms;
+                uint32_t link_status; // not guaranteed to exist
+                uint32_t path;
+                uint32_t vrr_capable;  // not guaranteed to exist
+                uint32_t subconnector; // not guaranteed to exist
+                uint32_t non_desktop;
+                uint32_t panel_orientation;   // not guaranteed to exist
+                uint32_t content_type;        // not guaranteed to exist
+                uint32_t max_bpc;             // not guaranteed to exist
+                uint32_t Colorspace;          // not guaranteed to exist
+                uint32_t hdr_output_metadata; // not guaranteed to exist
+                uint32_t tile;                // not guaranteed to exist
+
+                // atomic-modesetting only
+
+                uint32_t crtc_id;
+            } values;
+            uint32_t props[14] = {0};
+        };
+        UDRMConnectorProps props;
+
+        union UDRMConnectorColorspace {
+            struct {
+                uint32_t Default;
+                uint32_t BT2020_RGB;
+                uint32_t BT2020_YCC;
+            } values;
+            uint32_t props[3] = {0};
+        };
+        UDRMConnectorColorspace colorspace;
+    };
+
+    class IDRMImplementation {
+      public:
+        virtual ~IDRMImplementation()                                                                                  = default;
+        virtual bool commit(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector, SDRMConnectorCommitData& data) = 0;
+        virtual bool reset()                                                                                           = 0;
+
+        // moving a cursor IIRC is almost instant on most hardware so we don't have to wait for a commit.
+        virtual bool moveCursor(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector, bool skipSchedule = false) = 0;
+    };
+
+    class CDRMBackend : public IBackendImplementation {
+      public:
+        virtual ~CDRMBackend();
+        virtual eBackendType                                               type();
+        virtual bool                                                       start();
+        virtual std::vector<Hyprutils::Memory::CSharedPointer<SPollFD>>    pollFDs();
+        virtual int                                                        drmFD();
+        virtual bool                                                       dispatchEvents();
+        virtual uint32_t                                                   capabilities();
+        virtual bool                                                       setCursor(Hyprutils::Memory::CSharedPointer<IBuffer> buffer, const Hyprutils::Math::Vector2D& hotspot);
+        virtual void                                                       onReady();
+        virtual std::vector<SDRMFormat>                                    getRenderFormats();
+        virtual std::vector<SDRMFormat>                                    getCursorFormats();
+        virtual bool                                                       createOutput(const std::string& name = "");
+        virtual Hyprutils::Memory::CSharedPointer<IAllocator>              preferredAllocator();
+        virtual std::vector<SDRMFormat>                                    getRenderableFormats();
+        virtual std::vector<Hyprutils::Memory::CSharedPointer<IAllocator>> getAllocators();
+        virtual Hyprutils::Memory::CWeakPointer<IBackendImplementation>    getPrimary();
+
+        Hyprutils::Memory::CWeakPointer<CDRMBackend>                       self;
+
+        void                                                               log(eBackendLogLevel, const std::string&);
+        bool                                                               sessionActive();
+        int                                                                getNonMasterFD();
+
+        std::vector<FIdleCallback>                                         idleCallbacks;
+        std::string                                                        gpuName;
+        virtual int                                                        drmRenderNodeFD();
+        virtual eBackendGPUDriver                                          gpuDriver();
+        Hyprutils::Memory::CSharedPointer<SDRMCRTC>                        crtcByID(uint32_t id);
+
+        void                                                               dispatchCommitResults();
+        void                                                               handlePageFlip(uintptr_t flipID, unsigned int seq, unsigned int sec, unsigned int usec, uint32_t crtcID);
+
+      private:
+        CDRMBackend(Hyprutils::Memory::CSharedPointer<CBackend> backend);
+
+        static std::vector<Hyprutils::Memory::CSharedPointer<CDRMBackend>> attempt(Hyprutils::Memory::CSharedPointer<CBackend> backend);
+        static Hyprutils::Memory::CSharedPointer<CDRMBackend>              fromGpu(std::string path, Hyprutils::Memory::CSharedPointer<CBackend> backend,
+                                                                                   Hyprutils::Memory::CSharedPointer<CDRMBackend> primary);
+
+        bool     registerGPU(Hyprutils::Memory::CSharedPointer<CSessionDevice> gpu_, Hyprutils::Memory::CSharedPointer<CDRMBackend> primary_ = {});
+        bool     checkFeatures();
+        bool     initResources();
+        bool     initMgpu();
+        bool     updateSecondaryRendererState(DRMFBList* retired = nullptr);
+        bool     grabFormats();
+        bool     shouldBlit();
+        void     scanConnectors();
+        void     scanLeases();
+        void     restoreAfterVT();
+        void     recheckOutputs();
+        void     recheckCRTCs();
+        void     markRedundantTiles();
+        void     buildGlFormats(const std::vector<SGLFormat>& fmts);
+        bool     initCommitThread();
+        void     stopCommitThread();
+        void     cancelAsyncOutput(CDRMOutput* output, bool renewOwner = false);
+        void     emitAsyncCommitEvent(Hyprutils::Memory::CSharedPointer<CDRMOutput> output);
+        void     flushAsyncCommitEvents();
+        bool     pauseCommitQueue(uint64_t queueKey);
+        void     resumeCommitQueue(uint64_t queueKey);
+        uint64_t nextAsyncOwnerID();
+
+        Hyprutils::Memory::CSharedPointer<CSessionDevice>     gpu;
+        Hyprutils::Memory::CSharedPointer<IDRMImplementation> impl;
+        Hyprutils::Memory::CWeakPointer<CDRMBackend>          primary;
+
+        struct {
+            Hyprutils::Memory::CSharedPointer<IAllocator>   allocator;
+            Hyprutils::Memory::CSharedPointer<CDRMRenderer> renderer; // may be null if creation fails
+        } rendererState;
+
+        bool                                                          rendererRequired = true;
+        eBackendGPUDriver                                             driver           = AQ_BACKEND_GPU_DRIVER_UNKNOWN;
+
+        Hyprutils::Memory::CWeakPointer<CBackend>                     backend;
+
+        std::vector<Hyprutils::Memory::CSharedPointer<SDRMCRTC>>      crtcs;
+        std::vector<Hyprutils::Memory::CSharedPointer<SDRMPlane>>     planes;
+        std::vector<Hyprutils::Memory::CSharedPointer<SDRMConnector>> connectors;
+        std::vector<SDRMFormat>                                       formats;
+        std::vector<SDRMFormat>                                       glFormats;
+        uintptr_t                                                     m_lastPageFlipID           = 0;
+        uint64_t                                                      m_lastAsyncOwnerID         = 0;
+        size_t                                                        m_pendingAsyncCommitEvents = 0;
+        uintptr_t                                                     nextPageFlipID();
+        Hyprutils::Memory::CUniquePointer<CDRMCommitThread>           commitThread;
+        std::chrono::microseconds                                     commitLeadTime = std::chrono::microseconds{2000};
+
+        Hyprutils::Memory::CSharedPointer<CDRMDumbAllocator>          dumbAllocator;
+
+        bool                                                          atomic = false;
+
+        struct {
+            Hyprutils::Math::Vector2D cursorSize;
+            bool                      supportsAsyncCommit     = false;
+            bool                      supportsAddFb2Modifiers = false;
+            bool                      supportsTimelines       = false;
+        } drmProps;
+
+        struct {
+            Hyprutils::Signal::CHyprSignalListener sessionActivate;
+            Hyprutils::Signal::CHyprSignalListener gpuChange;
+            Hyprutils::Signal::CHyprSignalListener gpuRemove;
+        } listeners;
+
+        friend class CBackend;
+        friend class CDRMFB;
+        friend class CDRMFBAttachment;
+        friend struct SDRMConnector;
+        friend struct SDRMCRTC;
+        friend struct SDRMPlane;
+        friend class CDRMOutput;
+        friend class CDRMAsyncCommitData;
+        friend struct SDRMConnector;
+        friend class CDRMLegacyImpl;
+        friend class CDRMAtomicImpl;
+        friend class CDRMAtomicRequest;
+        friend class CDRMLease;
+        friend class CGBMBuffer;
+    };
+};

@@ -1,0 +1,772 @@
+#include <aquamarine/backend/drm/Atomic.hpp>
+#include <cerrno>
+#include <cstdint>
+#include <cstring>
+#include <drm_mode.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
+#include <sys/mman.h>
+#include <sstream>
+#include <optional>
+#include "Shared.hpp"
+#include "aquamarine/output/Output.hpp"
+
+using namespace Aquamarine;
+using namespace Hyprutils::Memory;
+using namespace Hyprutils::Math;
+#define SP CSharedPointer
+
+// HW capabilites aren't checked. Should be handled by the drivers (and highly unlikely to get a format outside of bpc range)
+// https://drmdb.emersion.fr/properties/3233857728/max%20bpc
+static uint8_t getMaxBPC(uint64_t min, uint64_t max, uint32_t drmFormat) {
+    uint8_t formatBPC = 8;
+
+    switch (drmFormat) {
+        case DRM_FORMAT_XRGB8888:
+        case DRM_FORMAT_XBGR8888:
+        case DRM_FORMAT_RGBX8888:
+        case DRM_FORMAT_BGRX8888:
+        case DRM_FORMAT_ARGB8888:
+        case DRM_FORMAT_ABGR8888:
+        case DRM_FORMAT_RGBA8888:
+        case DRM_FORMAT_BGRA8888: formatBPC = 8; break;
+
+        case DRM_FORMAT_XRGB2101010:
+        case DRM_FORMAT_XBGR2101010:
+        case DRM_FORMAT_RGBX1010102:
+        case DRM_FORMAT_BGRX1010102:
+        case DRM_FORMAT_ARGB2101010:
+        case DRM_FORMAT_ABGR2101010:
+        case DRM_FORMAT_RGBA1010102:
+        case DRM_FORMAT_BGRA1010102: formatBPC = 10; break;
+
+        case DRM_FORMAT_XRGB16161616:
+        case DRM_FORMAT_XBGR16161616:
+        case DRM_FORMAT_ARGB16161616:
+        case DRM_FORMAT_ABGR16161616: formatBPC = 16; break;
+
+        // FIXME? handle non-rgb formats and some weird stuff like DRM_FORMAT_AXBXGXRX106106106106
+        default: formatBPC = 8; break;
+    }
+
+    return std::clamp<uint64_t>(formatBPC, min, max);
+}
+
+Aquamarine::CDRMAtomicRequest::CDRMAtomicRequest(Hyprutils::Memory::CWeakPointer<CDRMBackend> backend_) : backend(backend_), req(drmModeAtomicAlloc()) {
+    if (!req)
+        failed = true;
+}
+
+Aquamarine::CDRMAtomicRequest::~CDRMAtomicRequest() {
+    if (req)
+        drmModeAtomicFree(req);
+    for (const auto& blob : borrowedModeBlobs) {
+        destroyBlob(blob);
+    }
+}
+
+// Restates every other enabled head at its current mode, so the kernel re-runs
+// its global modeset check across all of them instead of only ours.
+//
+// Drivers that allocate display bandwidth or head resources globally (nvidia,
+// and i915 via intel_bw_atomic_check) can reject a modeset that touches a single
+// connector while the other heads stay pinned in their existing configuration,
+// even when the very same end state commits fine if every head is modeset at
+// once. That is how a 4K@240 DSC mode ends up EINVAL next to two 1080p heads
+// while weston, which configures all outputs in one go, gets it. (see #7912)
+//
+// A fresh blob is required: handing the kernel the same blob id it already holds
+// leaves mode_changed clear, so the driver never redoes the allocation.
+// Returns false if there was nothing to restate.
+bool Aquamarine::CDRMAtomicRequest::restateConnectors(SP<SDRMConnector> self) {
+    if (failed)
+        return false;
+
+    bool any = false;
+
+    for (const auto& c : backend->connectors) {
+        if (c == self || !c->crtc || !c->output)
+            continue;
+
+        if (!c->output->enabledState)
+            continue;
+
+        drmModeModeInfo* current = c->getCurrentMode();
+        if (!current)
+            continue;
+
+        // getCurrentMode hands back a malloc'd copy. Take it by value and release
+        // it right away, so the early exits below don't each need their own free.
+        const drmModeModeInfo mode = *current;
+        free(current); // I know this and other will fail lint
+
+        uint32_t blob = 0;
+        if (drmModeCreatePropertyBlob(backend->gpu->fd, &mode, sizeof(mode), &blob)) {
+            backend->log(AQ_LOG_ERROR, std::format("atomic drm request: failed to blob mode for {} while restating heads", c->szName));
+            continue;
+        }
+
+        borrowedModeBlobs.emplace_back(blob);
+
+        TRACE(backend->log(AQ_LOG_TRACE, std::format("atomic drm request: restating head {} with blob {}", c->szName, blob)));
+
+        add(c->crtc->id, c->crtc->props.values.mode_id, blob);
+        add(c->crtc->id, c->crtc->props.values.active, 1);
+        add(c->id, c->props.values.crtc_id, c->crtc->id);
+
+        // A head that has not scanned out yet has no buffer to restate; its
+        // existing plane state carries over untouched, which is what we want.
+        if (c->crtc->primary && c->crtc->primary->front) {
+            // planeProps reads per-connector state off `conn`, so point it at the
+            // head we are restating rather than ours.
+            const auto saved = conn;
+            conn             = c;
+            planeProps(c->crtc->primary, c->crtc->primary->front, c->crtc->id, {}, c->atomic.colorRange);
+            conn = saved;
+        }
+
+        any = true;
+    }
+
+    return any && !failed;
+}
+
+void Aquamarine::CDRMAtomicRequest::add(uint32_t id, uint32_t prop, uint64_t val) {
+    if (failed)
+        return;
+
+    TRACE(backend->log(AQ_LOG_TRACE, std::format("atomic drm request: adding id {} prop {} with value {}", id, prop, val)));
+
+    if (id == 0 || prop == 0) {
+        backend->log(AQ_LOG_ERROR, "atomic drm request: failed to add prop: id / prop == 0");
+        return;
+    }
+
+    if (drmModeAtomicAddProperty(req, id, prop, val) < 0) {
+        backend->log(AQ_LOG_ERROR, "atomic drm request: failed to add prop");
+        failed = true;
+    }
+}
+
+bool Aquamarine::CDRMAtomicRequest::addRaw(uint32_t id, uint32_t prop, uint64_t val) noexcept {
+    if (!req || !id || !prop)
+        return false;
+
+    return drmModeAtomicAddProperty(req, id, prop, val) >= 0;
+}
+
+CDRMAtomicRequest::SAsyncResult Aquamarine::CDRMAtomicRequest::submitAsync(int drmFD, uint32_t flags, uint64_t commitID) noexcept {
+    if (!req || failed || drmFD < 0 || !commitID)
+        return {.submitted = false, .error = EINVAL};
+
+    const auto RET = drmModeAtomicCommit(drmFD, req, flags, rc<void*>(commitID));
+    if (RET)
+        return {.submitted = false, .error = RET == -1 ? errno : -RET};
+
+    return {.submitted = true, .error = 0};
+}
+
+void Aquamarine::CDRMAtomicRequest::planeProps(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Memory::CSharedPointer<CDRMFB> fb, uint32_t crtc,
+                                               Hyprutils::Math::Vector2D pos, eOutputColorRange colorRange) {
+
+    if (failed)
+        return;
+
+    if (!fb || !crtc) {
+        // Disable the plane
+        TRACE(backend->log(AQ_LOG_TRACE, std::format("atomic planeProps: disabling plane {}", plane->id)));
+        add(plane->id, plane->props.values.fb_id, 0);
+        add(plane->id, plane->props.values.crtc_id, 0);
+        add(plane->id, plane->props.values.crtc_x, (uint64_t)(int64_t)pos.x);
+        add(plane->id, plane->props.values.crtc_y, (uint64_t)(int64_t)pos.y);
+        return;
+    }
+
+    TRACE(backend->log(AQ_LOG_TRACE,
+                       std::format("atomic planeProps: prop blobs: src_x {}, src_y {}, src_w {}, src_h {}, crtc_w {}, crtc_h {}, fb_id {}, crtc_id {}", plane->props.values.src_x,
+                                   plane->props.values.src_y, plane->props.values.src_w, plane->props.values.src_h, plane->props.values.crtc_w, plane->props.values.crtc_h,
+                                   plane->props.values.fb_id, plane->props.values.crtc_id)));
+
+    // src_ are 16.16 fixed point (lol)
+    add(plane->id, plane->props.values.src_x, 0);
+    add(plane->id, plane->props.values.src_y, 0);
+    add(plane->id, plane->props.values.src_w, ((uint64_t)fb->buffer->size.x) << 16);
+    add(plane->id, plane->props.values.src_h, ((uint64_t)fb->buffer->size.y) << 16);
+    add(plane->id, plane->props.values.crtc_w, (uint32_t)fb->buffer->size.x);
+    add(plane->id, plane->props.values.crtc_h, (uint32_t)fb->buffer->size.y);
+    add(plane->id, plane->props.values.fb_id, fb->id);
+    add(plane->id, plane->props.values.crtc_id, crtc);
+
+    if (plane->props.values.color_range) {
+        std::optional<uint32_t> rangeVal;
+        switch (colorRange) {
+            case AQ_OUTPUT_COLOR_RANGE_FULL: rangeVal = plane->colorRange.values.Full_YCbCr; break;
+            case AQ_OUTPUT_COLOR_RANGE_LIMITED: rangeVal = plane->colorRange.values.Limited_YCbCr; break;
+            case AQ_OUTPUT_COLOR_RANGE_AUTO:
+                // https://github.com/NVIDIA/open-gpu-kernel-modules/discussions/1105
+                if (backend->gpuDriver() == AQ_BACKEND_GPU_DRIVER_NVIDIA)
+                    rangeVal = plane->colorRange.values.Full_YCbCr;
+                break;
+        }
+        if (rangeVal)
+            add(plane->id, plane->props.values.color_range, *rangeVal);
+    }
+
+    planePropsPos(plane, pos);
+}
+
+void Aquamarine::CDRMAtomicRequest::planePropsPos(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Math::Vector2D pos) {
+
+    if (failed)
+        return;
+
+    TRACE(backend->log(AQ_LOG_TRACE, std::format("atomic planeProps: pos blobs: crtc_x {}, crtc_y {}", plane->props.values.crtc_x, plane->props.values.crtc_y)));
+
+    add(plane->id, plane->props.values.crtc_x, (uint64_t)(int64_t)pos.x);
+    add(plane->id, plane->props.values.crtc_y, (uint64_t)(int64_t)pos.y);
+}
+
+void Aquamarine::CDRMAtomicRequest::setConnector(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector) {
+    conn = connector;
+}
+
+void Aquamarine::CDRMAtomicRequest::addConnector(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector, SDRMConnectorCommitData& data) {
+    const auto& STATE  = data.outputState;
+    const bool  enable = data.enabled && data.mainFB;
+
+    TRACE(backend->log(AQ_LOG_TRACE,
+                       std::format("atomic addConnector blobs: mode_id {}, active {}, crtc_id {}, link_status {}, content_type {}", connector->crtc->props.values.mode_id,
+                                   connector->crtc->props.values.active, connector->props.values.crtc_id, connector->props.values.link_status,
+                                   connector->props.values.content_type)));
+
+    TRACE(backend->log(AQ_LOG_TRACE, std::format("atomic addConnector values: CRTC {}, mode {}", enable ? connector->crtc->id : 0, data.atomic.modeBlob)));
+
+    conn = connector;
+
+    // page-flips that don't change connector state must avoid touching connector_state
+    // entirely, otherwise the kernel runs drm_atomic_helper_check_modeset every frame and
+    // some displays (samsung HDMI TVs in particular) renegotiate the avi infoframe,
+    // causing per-frame blanking. cache the last-applied values and only emit on a
+    // modeset, on the first commit, or when a value actually changes. (see #265)
+    const bool     forceConnProps = data.modeset || !connector->atomic.propsCached;
+    const uint32_t newCrtcID      = enable ? connector->crtc->id : 0;
+    uint64_t       newMaxBpc = 0, newColorspace = 0;
+    uint16_t       newContentType = 0;
+    bool           maxBpcEmitted  = false;
+
+    if (enable) {
+        drmModeModeInfo* currentMode = connector->getCurrentMode();
+        bool             modeDiffers = true;
+        if (currentMode) {
+            modeDiffers = memcmp(currentMode, &data.modeInfo, sizeof(drmModeModeInfo)) != 0;
+            free(currentMode);
+        }
+
+        if (modeDiffers)
+            addConnectorModeset(connector, data);
+
+        // Setup HDR
+        if (connector->props.values.max_bpc && connector->maxBpcBounds.at(0) && connector->maxBpcBounds.at(1) && !connector->maxBpcFailed) {
+            newMaxBpc = getMaxBPC(connector->maxBpcBounds.at(0), connector->maxBpcBounds.at(1), data.mainFB->buffer->dmabuf().format);
+            if (forceConnProps || connector->atomic.maxBpc != newMaxBpc) {
+                add(connector->id, connector->props.values.max_bpc, newMaxBpc);
+                maxBpcEmitted = true;
+            }
+        }
+
+        if (connector->props.values.Colorspace && connector->colorspace.values.BT2020_RGB) {
+            newColorspace = STATE.wideColorGamut ? connector->colorspace.values.BT2020_RGB : connector->colorspace.values.Default;
+            if (forceConnProps || connector->atomic.colorspace != newColorspace)
+                add(connector->id, connector->props.values.Colorspace, newColorspace);
+        }
+
+        if (connector->props.values.hdr_output_metadata && data.atomic.hdrd)
+            add(connector->id, connector->props.values.hdr_output_metadata, data.atomic.hdrBlob);
+    } else
+        addConnectorModeset(connector, data);
+
+    addConnectorCursor(connector, data);
+
+    if (forceConnProps || connector->atomic.crtcID != newCrtcID)
+        add(connector->id, connector->props.values.crtc_id, newCrtcID);
+
+    if (enable && connector->props.values.content_type) {
+        newContentType = STATE.contentType;
+        if (forceConnProps || connector->atomic.contentType != newContentType)
+            add(connector->id, connector->props.values.content_type, newContentType);
+    }
+
+    data.atomic.maxBpc        = newMaxBpc;
+    data.atomic.maxBpcEmitted = maxBpcEmitted;
+    data.atomic.colorspace    = newColorspace;
+    data.atomic.contentType   = newContentType;
+    data.atomic.crtcID        = newCrtcID;
+
+    add(connector->crtc->id, connector->crtc->props.values.active, enable);
+
+    if (enable) {
+        if (connector->output->supportsExplicit && data.committed & COutputState::AQ_OUTPUT_STATE_EXPLICIT_OUT_FENCE)
+            add(connector->crtc->id, connector->crtc->props.values.out_fence_ptr, (uintptr_t)&data.outputState.explicitOutFence);
+
+        if (connector->crtc->props.values.gamma_lut && data.atomic.gammad)
+            add(connector->crtc->id, connector->crtc->props.values.gamma_lut, data.atomic.gammaLut);
+
+        if (connector->crtc->props.values.degamma_lut && data.atomic.degammad)
+            add(connector->crtc->id, connector->crtc->props.values.degamma_lut, data.atomic.degammaLut);
+
+        if (connector->crtc->props.values.ctm && data.atomic.ctmd)
+            add(connector->crtc->id, connector->crtc->props.values.ctm, data.atomic.ctmBlob);
+
+        if (connector->crtc->props.values.vrr_enabled)
+            add(connector->crtc->id, connector->crtc->props.values.vrr_enabled, (uint64_t)STATE.adaptiveSync);
+
+        planeProps(connector->crtc->primary, data.mainFB, connector->crtc->id, {}, STATE.colorRange);
+
+        if (connector->output->supportsExplicit && (data.committed & COutputState::AQ_OUTPUT_STATE_EXPLICIT_IN_FENCE) && STATE.explicitInFence >= 0)
+            add(connector->crtc->primary->id, connector->crtc->primary->props.values.in_fence_fd, STATE.explicitInFence);
+
+        if (connector->crtc->primary->props.values.fb_damage_clips)
+            add(connector->crtc->primary->id, connector->crtc->primary->props.values.fb_damage_clips, data.atomic.fbDamage);
+    } else {
+        planeProps(connector->crtc->primary, nullptr, 0, {});
+    }
+}
+
+void Aquamarine::CDRMAtomicRequest::addConnectorModeset(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector, SDRMConnectorCommitData& data) {
+    if (!data.modeset)
+        return;
+
+    const bool enable = data.enabled && data.mainFB;
+
+    data.atomic.blobbed = true;
+
+    if (enable) {
+        add(connector->crtc->id, connector->crtc->props.values.mode_id, data.atomic.modeBlob);
+        if (connector->props.values.link_status)
+            add(connector->id, connector->props.values.link_status, DRM_MODE_LINK_STATUS_GOOD);
+    } else
+        add(connector->crtc->id, connector->crtc->props.values.mode_id, data.atomic.modeBlob);
+}
+
+void Aquamarine::CDRMAtomicRequest::addConnectorCursor(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector, SDRMConnectorCommitData& data) {
+    if (!connector->crtc->cursor)
+        return;
+
+    const bool enable = data.enabled && data.mainFB;
+
+    if (enable) {
+        if (data.committed & COutputState::AQ_OUTPUT_STATE_CURSOR_SHAPE || data.committed & COutputState::AQ_OUTPUT_STATE_CURSOR_POS) {
+            TRACE(backend->log(AQ_LOG_TRACE, data.committed & COutputState::AQ_OUTPUT_STATE_CURSOR_SHAPE ? "atomic addConnector cursor shape" : "atomic addConnector cursor pos"));
+            if (data.committed & COutputState::AQ_OUTPUT_STATE_CURSOR_SHAPE) {
+                if (!data.cursorVisible)
+                    planeProps(connector->crtc->cursor, nullptr, 0, {});
+                else
+                    planeProps(connector->crtc->cursor, data.cursorFB, connector->crtc->id, data.cursorPos - data.cursorHotspot);
+            } else if (data.cursorVisible)
+                planePropsPos(connector->crtc->cursor, data.cursorPos - data.cursorHotspot);
+        }
+    } else
+        planeProps(connector->crtc->cursor, nullptr, 0, {});
+}
+
+bool Aquamarine::CDRMAtomicRequest::commit(uint32_t flagssss) {
+    static auto flagsToStr = [](uint32_t flags) {
+        std::ostringstream result;
+        if (flags & DRM_MODE_ATOMIC_ALLOW_MODESET)
+            result << "ATOMIC_ALLOW_MODESET ";
+        if (flags & DRM_MODE_ATOMIC_NONBLOCK)
+            result << "ATOMIC_NONBLOCK ";
+        if (flags & DRM_MODE_ATOMIC_TEST_ONLY)
+            result << "ATOMIC_TEST_ONLY ";
+        if (flags & DRM_MODE_PAGE_FLIP_EVENT)
+            result << "PAGE_FLIP_EVENT ";
+        if (flags & DRM_MODE_PAGE_FLIP_ASYNC)
+            result << "PAGE_FLIP_ASYNC ";
+        if (flags & (~DRM_MODE_ATOMIC_FLAGS))
+            result << " + invalid...";
+        return result.str();
+    };
+
+    if (failed) {
+        backend->log((flagssss & DRM_MODE_ATOMIC_TEST_ONLY) ? AQ_LOG_DEBUG : AQ_LOG_ERROR, std::format("atomic drm request: failed to commit, failed flag set to true"));
+        return false;
+    }
+
+    // a test never flips.
+    const bool WANTSFLIP = conn && conn->crtc && (flagssss & DRM_MODE_PAGE_FLIP_EVENT) && !(flagssss & DRM_MODE_ATOMIC_TEST_ONLY);
+    const auto FLIPID    = WANTSFLIP ? conn->crtc->armPageFlip(conn, flagssss & DRM_MODE_PAGE_FLIP_ASYNC) : uintptr_t{0};
+
+    if (auto ret = drmModeAtomicCommit(backend->gpu->fd, req, flagssss, rc<void*>(FLIPID)); ret) {
+        backend->log((flagssss & DRM_MODE_ATOMIC_TEST_ONLY) ? AQ_LOG_DEBUG : AQ_LOG_ERROR,
+                     std::format("atomic drm request: failed to commit: {}, flags: {}", strerror(ret == -1 ? errno : -ret), flagsToStr(flagssss)));
+
+        if (WANTSFLIP)
+            conn->crtc->disarmPageFlip();
+
+        return false;
+    }
+
+    if (WANTSFLIP)
+        conn->sched.onFrameSubmitted();
+
+    return true;
+}
+
+void Aquamarine::CDRMAtomicRequest::destroyBlob(uint32_t id) {
+    if (!id)
+        return;
+
+    if (drmModeDestroyPropertyBlob(backend->gpu->fd, id))
+        backend->log(AQ_LOG_ERROR, "atomic drm request: failed to destroy a blob");
+}
+
+void Aquamarine::CDRMAtomicRequest::commitBlob(uint32_t* current, uint32_t next) {
+    if (*current == next)
+        return;
+    destroyBlob(*current);
+    *current = next;
+}
+
+void Aquamarine::CDRMAtomicRequest::rollbackBlob(uint32_t* current, uint32_t next) {
+    if (*current == next)
+        return;
+    destroyBlob(next);
+}
+
+void Aquamarine::CDRMAtomicRequest::rollback(SDRMConnectorCommitData& data) {
+    if (!conn)
+        return;
+
+    conn->crtc->atomic.ownModeID = true;
+    if (data.atomic.blobbed)
+        rollbackBlob(&conn->crtc->atomic.modeID, data.atomic.modeBlob);
+    rollbackBlob(&conn->crtc->atomic.gammaLut, data.atomic.gammaLut);
+    rollbackBlob(&conn->crtc->atomic.ctm, data.atomic.ctmBlob);
+    rollbackBlob(&conn->crtc->atomic.hdr, data.atomic.hdrBlob);
+    destroyBlob(data.atomic.fbDamage);
+}
+
+void Aquamarine::CDRMAtomicRequest::apply(SDRMConnectorCommitData& data) {
+    if (!conn)
+        return;
+
+    if (!conn->crtc->atomic.ownModeID)
+        conn->crtc->atomic.modeID = 0;
+
+    conn->crtc->atomic.ownModeID = true;
+    if (data.atomic.blobbed)
+        commitBlob(&conn->crtc->atomic.modeID, data.atomic.modeBlob);
+    commitBlob(&conn->crtc->atomic.gammaLut, data.atomic.gammaLut);
+    commitBlob(&conn->crtc->atomic.ctm, data.atomic.ctmBlob);
+    commitBlob(&conn->crtc->atomic.hdr, data.atomic.hdrBlob);
+    destroyBlob(data.atomic.fbDamage);
+}
+
+Aquamarine::CDRMAtomicImpl::CDRMAtomicImpl(Hyprutils::Memory::CSharedPointer<CDRMBackend> backend_) : backend(backend_) {
+    ;
+}
+
+CUniquePointer<CDRMAtomicRequest> Aquamarine::CDRMAtomicImpl::prepareAsync(SP<SDRMConnector> connector, SDRMConnectorCommitData& data, uint32_t& flags) {
+    if (!prepareConnector(connector, data))
+        return nullptr;
+
+    auto request = makeUnique<CDRMAtomicRequest>(backend);
+    request->addConnector(connector, data);
+
+    flags = data.flags | DRM_MODE_ATOMIC_NONBLOCK;
+    if (request->failed) {
+        request->rollback(data);
+        return nullptr;
+    }
+
+    return request;
+}
+
+void Aquamarine::CDRMAtomicImpl::finalizeAsync(CDRMAtomicRequest& request, SP<SDRMConnector> connector, SDRMConnectorCommitData& data, bool success) {
+    if (!success) {
+        request.rollback(data);
+        return;
+    }
+
+    request.apply(data);
+    connector->atomic.maxBpc      = data.atomic.maxBpc;
+    connector->atomic.colorspace  = data.atomic.colorspace;
+    connector->atomic.contentType = data.atomic.contentType;
+    connector->atomic.crtcID      = data.atomic.crtcID;
+    connector->atomic.propsCached = true;
+    connector->atomic.colorRange  = data.outputState.colorRange;
+    connector->atomic.vrrEnabled  = data.outputState.adaptiveSync;
+    connector->output->vrrActive  = data.outputState.adaptiveSync;
+    if (data.atomic.ctmd)
+        connector->crtc->atomic.ctmStateKnown = true;
+}
+
+bool Aquamarine::CDRMAtomicImpl::prepareConnector(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector, SDRMConnectorCommitData& data) {
+    const auto& STATE  = data.outputState;
+    const bool  enable = data.enabled;
+    const auto& MODE   = STATE.mode ? STATE.mode : STATE.customMode;
+
+    if (data.modeset) {
+        if (!enable)
+            data.atomic.modeBlob = 0;
+        else {
+            if (drmModeCreatePropertyBlob(connector->backend->gpu->fd, &data.modeInfo, sizeof(drmModeModeInfo), &data.atomic.modeBlob)) {
+                connector->backend->backend->log(AQ_LOG_ERROR, "atomic drm: failed to create a modeset blob");
+                return false;
+            }
+
+            TRACE(connector->backend->log(AQ_LOG_TRACE,
+                                          std::format("Connector blob id {}: clock {}, {}x{}, vrefresh {}, name: {}", data.atomic.modeBlob, data.modeInfo.clock,
+                                                      data.modeInfo.hdisplay, data.modeInfo.vdisplay, data.modeInfo.vrefresh, data.modeInfo.name)));
+        }
+    }
+
+    auto prepareGammaBlob = [connector](uint32_t prop, const std::vector<uint16_t>& gammaLut, uint32_t* blobId) -> bool {
+        if (!prop) // TODO: allow this with legacy gamma, perhaps.
+            connector->backend->backend->log(AQ_LOG_ERROR, "atomic drm: failed to commit gamma: no gamma_lut prop");
+        else if (gammaLut.empty()) {
+            *blobId = 0;
+            return true;
+        } else {
+            std::vector<drm_color_lut> lut;
+            lut.resize(gammaLut.size() / 3); // [r,g,b]+
+
+            for (size_t i = 0; i < lut.size(); ++i) {
+                lut.at(i).red      = gammaLut.at(i * 3 + 0);
+                lut.at(i).green    = gammaLut.at(i * 3 + 1);
+                lut.at(i).blue     = gammaLut.at(i * 3 + 2);
+                lut.at(i).reserved = 0;
+            }
+
+            if (drmModeCreatePropertyBlob(connector->backend->gpu->fd, lut.data(), lut.size() * sizeof(drm_color_lut), blobId)) {
+                connector->backend->backend->log(AQ_LOG_ERROR, "atomic drm: failed to create a gamma blob");
+                *blobId = 0;
+            } else
+                return true;
+        }
+
+        return false;
+    };
+
+    // re-send gamma/degamma on modeset so a previous compositor's lut does not
+    // bleed into our session. an empty STATE.gammaLut produces a zero blob, which
+    // clears the kernel state. only ride the modeset path when the prop actually
+    // exists, otherwise we'd log a spurious "no gamma_lut prop" error per modeset.
+    // (see #127)
+    if ((data.modeset && connector->crtc->props.values.gamma_lut) || (data.committed & COutputState::AQ_OUTPUT_STATE_GAMMA_LUT))
+        data.atomic.gammad = prepareGammaBlob(connector->crtc->props.values.gamma_lut, STATE.gammaLut, &data.atomic.gammaLut);
+
+    if ((data.modeset && connector->crtc->props.values.degamma_lut) || (data.committed & COutputState::AQ_OUTPUT_STATE_DEGAMMA_LUT))
+        data.atomic.degammad = prepareGammaBlob(connector->crtc->props.values.degamma_lut, STATE.degammaLut, &data.atomic.degammaLut);
+
+    if (data.ctm.has_value()) {
+        if (!connector->crtc->props.values.ctm)
+            connector->backend->backend->log(AQ_LOG_ERROR, "atomic drm: failed to commit ctm: no ctm prop support");
+        else {
+            static auto doubleToS3132Fixed = [](const double val) -> uint64_t {
+                const uint64_t result = std::abs(val) * (1ULL << 32);
+                if (val < 0)
+                    return result | 1ULL << 63;
+                return result;
+            };
+
+            drm_color_ctm ctm = {0};
+            for (size_t i = 0; i < 9; ++i) {
+                ctm.matrix[i] = doubleToS3132Fixed(data.ctm->getMatrix()[i]);
+            }
+
+            if (drmModeCreatePropertyBlob(connector->backend->gpu->fd, &ctm, sizeof(drm_color_ctm), &data.atomic.ctmBlob)) {
+                connector->backend->backend->log(AQ_LOG_ERROR, "atomic drm: failed to create a ctm blob");
+                data.atomic.ctmBlob = 0;
+            } else
+                data.atomic.ctmd = true;
+        }
+    }
+
+    if ((data.modeset || (data.committed & COutputState::AQ_OUTPUT_STATE_HDR)) && data.hdrMetadata.has_value()) {
+        if (!connector->props.values.hdr_output_metadata)
+            connector->backend->backend->log(AQ_LOG_ERROR, "atomic drm: failed to commit hdr metadata: no HDR_OUTPUT_METADATA prop support");
+        else {
+            if (drmModeCreatePropertyBlob(connector->backend->gpu->fd, &data.hdrMetadata.value(), sizeof(hdr_output_metadata), &data.atomic.hdrBlob)) {
+                connector->backend->backend->log(AQ_LOG_ERROR, "atomic drm: failed to create a hdr metadata blob");
+                data.atomic.hdrBlob = 0;
+                data.atomic.hdrd    = false;
+            } else {
+                data.atomic.hdrd = true;
+                TRACE(connector->backend->backend->log(
+                    AQ_LOG_TRACE,
+                    std::format("atomic drm: setting hdr min {}, max {}, avg {}, content {}, primaries {},{} {},{} {},{} {},{}",
+                                data.hdrMetadata->hdmi_metadata_type1.min_display_mastering_luminance, data.hdrMetadata->hdmi_metadata_type1.max_display_mastering_luminance,
+                                data.hdrMetadata->hdmi_metadata_type1.max_fall, data.hdrMetadata->hdmi_metadata_type1.max_cll,
+                                data.hdrMetadata->hdmi_metadata_type1.display_primaries[0].x, data.hdrMetadata->hdmi_metadata_type1.display_primaries[0].y,
+                                data.hdrMetadata->hdmi_metadata_type1.display_primaries[1].x, data.hdrMetadata->hdmi_metadata_type1.display_primaries[1].y,
+                                data.hdrMetadata->hdmi_metadata_type1.display_primaries[2].x, data.hdrMetadata->hdmi_metadata_type1.display_primaries[2].y,
+                                data.hdrMetadata->hdmi_metadata_type1.display_primaries[0].x, data.hdrMetadata->hdmi_metadata_type1.white_point.x,
+                                data.hdrMetadata->hdmi_metadata_type1.white_point.y)));
+            }
+        }
+    }
+
+    if ((data.committed & COutputState::AQ_OUTPUT_STATE_DAMAGE) && connector->crtc->primary->props.values.fb_damage_clips && MODE) {
+        if (data.damage.empty())
+            data.atomic.fbDamage = 0;
+        else {
+            TRACE(connector->backend->backend->log(AQ_LOG_TRACE, std::format("atomic drm: clipping damage to pixel size {}", MODE->pixelSize)));
+            std::vector<pixman_box32_t> rects = data.damage.copy().intersect(CBox{{}, MODE->pixelSize}).getRects();
+            if (drmModeCreatePropertyBlob(connector->backend->gpu->fd, rects.data(), sizeof(pixman_box32_t) * rects.size(), &data.atomic.fbDamage)) {
+                connector->backend->backend->log(AQ_LOG_ERROR, "atomic drm: failed to create a damage blob");
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool Aquamarine::CDRMAtomicImpl::commit(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector, SDRMConnectorCommitData& data) {
+    if (!prepareConnector(connector, data))
+        return false;
+
+    CDRMAtomicRequest request(backend);
+
+    request.addConnector(connector, data);
+
+    uint32_t flags = data.flags;
+    if (data.test)
+        flags |= DRM_MODE_ATOMIC_TEST_ONLY;
+    if (data.modeset)
+        flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
+    if (!data.blocking && !data.test)
+        flags |= DRM_MODE_ATOMIC_NONBLOCK;
+
+    bool ok = request.commit(flags);
+
+    // If the commit failed and max_bpc was actually emitted in this request, retry
+    // without it. Some drivers (notably amdgpu on eDP panels) reject atomic commits
+    // that touch max_bpc. Gate on maxBpcEmitted rather than the staged maxBpc value:
+    // on cached page-flips max_bpc is skipped when unchanged, so an unrelated atomic
+    // failure must not be misattributed to max_bpc and permanently latch maxBpcFailed.
+    if (!ok && data.atomic.maxBpcEmitted && !connector->maxBpcFailed) {
+        connector->backend->backend->log(AQ_LOG_WARNING, "drm: atomic commit failed with max_bpc set, retrying without max_bpc");
+
+        // Re-build the request without max_bpc (addConnector checks maxBpcFailed
+        // and will skip the max_bpc property). The property blobs created in
+        // prepareConnector() are reused as-is, so we must NOT roll back the
+        // original request here or request2 would submit already-destroyed blob
+        // IDs. Blob cleanup is handled by request2.apply()/rollback() below.
+        // maxBpcFailed is latched here so addConnector omits the property, then
+        // cleared on retry failure so a transient error does not permanently
+        // disable max_bpc for this connector.
+        connector->maxBpcFailed   = true;
+        data.atomic.maxBpc        = 0;
+        data.atomic.maxBpcEmitted = false;
+
+        CDRMAtomicRequest request2(backend);
+        request2.addConnector(connector, data);
+
+        ok = request2.commit(flags);
+
+        if (ok) {
+            request2.apply(data);
+            if (!data.test) {
+                connector->atomic.maxBpc      = data.atomic.maxBpc;
+                connector->atomic.colorspace  = data.atomic.colorspace;
+                connector->atomic.contentType = data.atomic.contentType;
+                connector->atomic.crtcID      = data.atomic.crtcID;
+                connector->atomic.propsCached = true;
+                connector->atomic.colorRange  = data.outputState.colorRange;
+                if (data.atomic.ctmd)
+                    connector->crtc->atomic.ctmStateKnown = true;
+
+                if (data.mainFB && data.enabled && (flags & DRM_MODE_PAGE_FLIP_EVENT))
+                    connector->sched.onFrameSubmitted();
+            }
+        } else {
+            connector->maxBpcFailed = false;
+            request2.rollback(data);
+        }
+
+        return ok;
+    }
+
+    // A modeset the driver rejects may still be reachable if every head is
+    // modeset together, since display resources are allocated globally. Retry
+    // once that way before letting the caller fall back to a lesser mode.
+    // See CDRMAtomicRequest::restateConnectors.
+    std::optional<CDRMAtomicRequest> retry;
+    if (!ok && data.modeset) {
+        retry.emplace(backend);
+        retry->addConnector(connector, data);
+        if (retry->restateConnectors(connector)) {
+            ok = retry->commit(flags);
+            if (ok)
+                backend->log(AQ_LOG_DEBUG,
+                             std::format("atomic drm: {} modeset only passed with every head restated; the driver would not "
+                                         "re-allocate for a single connector",
+                                         connector->szName));
+        }
+
+        if (!ok)
+            retry.reset();
+    }
+
+    // whichever request the kernel accepted owns the blob bookkeeping
+    CDRMAtomicRequest& applied = retry.has_value() ? *retry : request;
+
+    if (ok) {
+        applied.apply(data);
+        if (!data.test) {
+            // remember which connector_state values the kernel last accepted so the
+            // next page-flip can skip emitting unchanged ones (see #265).
+            connector->atomic.maxBpc      = data.atomic.maxBpc;
+            connector->atomic.colorspace  = data.atomic.colorspace;
+            connector->atomic.contentType = data.atomic.contentType;
+            connector->atomic.crtcID      = data.atomic.crtcID;
+            connector->atomic.propsCached = true;
+            connector->atomic.colorRange  = data.outputState.colorRange;
+            if (data.atomic.ctmd)
+                connector->crtc->atomic.ctmStateKnown = true;
+        }
+    } else
+        applied.rollback(data);
+
+    return ok;
+}
+
+bool Aquamarine::CDRMAtomicImpl::reset() {
+    CDRMAtomicRequest request(backend);
+
+    for (auto const& crtc : backend->crtcs) {
+        request.add(crtc->id, crtc->props.values.mode_id, 0);
+        request.add(crtc->id, crtc->props.values.active, 0);
+    }
+
+    for (auto const& conn : backend->connectors) {
+        request.add(conn->id, conn->props.values.crtc_id, 0);
+    }
+
+    for (auto const& plane : backend->planes) {
+        request.planeProps(plane, nullptr, 0, {});
+    }
+
+    const bool ok = request.commit(DRM_MODE_ATOMIC_ALLOW_MODESET);
+    if (ok) {
+        for (auto const& crtc : backend->crtcs) {
+            crtc->atomic.ctmStateKnown = false;
+        }
+    }
+
+    return ok;
+}
+
+bool Aquamarine::CDRMAtomicImpl::moveCursor(SP<SDRMConnector> connector, bool skipSchedule) {
+    if (!connector->output->cursorVisible || !connector->output->state->state().enabled || !connector->crtc || !connector->crtc->cursor)
+        return true;
+
+    if (!skipSchedule) {
+        TRACE(connector->backend->log(AQ_LOG_TRACE, "atomic moveCursor"));
+        connector->output->scheduleFrame(IOutput::AQ_SCHEDULE_CURSOR_MOVE);
+    }
+
+    return true;
+}
