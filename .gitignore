@@ -57,3 +57,6 @@ meta/hl.meta.lua
 
 hyprtester/pointer-scroll.txt
 /keyboard-modifiers.txt
+
+__pycache__/
+*.pyc
