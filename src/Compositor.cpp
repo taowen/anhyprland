@@ -212,7 +212,14 @@ CCompositor::CCompositor(bool onlyConfig) : m_onlyConfigVerification(onlyConfig)
     std::mt19937                    engine(dev());
     std::uniform_int_distribution<> distribution(0, INT32_MAX);
 
+#ifdef __ANDROID__
+    // App-private runtime paths leave little room in sockaddr_un::sun_path.
+    // Keep the timestamp/random instance format used by hyprctl, but omit the
+    // full commit hash so both IPC sockets fit below the 108-byte limit.
+    m_instanceSignature = std::format("an_{}_{:08x}", std::time(nullptr), distribution(engine));
+#else
     m_instanceSignature = std::format("{}_{}_{}", GIT_COMMIT_HASH, std::time(nullptr), distribution(engine));
+#endif
 
     setenv("HYPRLAND_INSTANCE_SIGNATURE", m_instanceSignature.c_str(), true);
 

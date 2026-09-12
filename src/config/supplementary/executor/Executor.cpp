@@ -11,6 +11,11 @@
 
 #include <hyprutils/string/String.hpp>
 #include <chrono>
+#ifdef __ANDROID__
+#include <cerrno>
+#include <sys/wait.h>
+#include <thread>
+#endif
 
 using namespace Config::Supplementary;
 using namespace Hyprutils::String;
@@ -202,6 +207,15 @@ std::optional<uint64_t> CExecutor::spawnRawProc(const std::string& args, PHLWORK
             close(devnull);
         }
 
+#ifdef __ANDROID__
+        // A hosted distribution owns the guest loader and session environment.
+        // Apply its adapter here so Lua, IPC and workspace exec rules all use
+        // the same launch boundary. Passing argv preserves the command text.
+        if (const auto* wrapper = getenv("ARLINUX_EXEC_WRAPPER"); wrapper && wrapper[0] == '/') {
+            execl("/system/bin/sh", "sh", wrapper, args.c_str(), nullptr);
+            _exit(127);
+        }
+#endif
         execl("/bin/sh", "/bin/sh", "-c", args.c_str(), nullptr);
 
         // exit child
@@ -210,6 +224,14 @@ std::optional<uint64_t> CExecutor::spawnRawProc(const std::string& args, PHLWORK
     // run in parent
 
     LOG(Log::DEBUG, "[executor] Process created with pid {}", child);
+#ifdef __ANDROID__
+    // The embedded host does not install Hyprland's process-wide SIGCHLD
+    // handler. Reap only this child, without consuming Android/Xwayland exits.
+    std::thread([child] {
+        int status = 0;
+        while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+    }).detach();
+#endif
 
     return child;
 }

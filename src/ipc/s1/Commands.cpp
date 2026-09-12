@@ -90,6 +90,22 @@ class CCommandFormatter {
     static std::string getMonitorData(PHLMONITOR monitor, eOutputFormat format);
 };
 
+// Arch ARM Quickshell still consumes numeric workspace IDs. Keep the new
+// address/type protocol while supplying the legacy field on Android.
+static std::string androidWorkspaceIDField(PHLWORKSPACE workspace) {
+#ifdef __ANDROID__
+    if (!workspace)
+        return "\"id\": 0, ";
+    if (const auto id = workspace->numberedID(); id)
+        return std::format("\"id\": {}, ", *id);
+    static std::unordered_map<std::string, int64_t> namedIDs;
+    const auto [entry, inserted] = namedIDs.try_emplace(workspace->addressableName(), -1337 - sc<int64_t>(namedIDs.size()));
+    return std::format("\"id\": {}, ", entry->second);
+#else
+    return "";
+#endif
+}
+
 static void trimTrailingComma(std::string& str) {
     if (!str.empty() && str.back() == ',')
         str.pop_back();
@@ -233,12 +249,12 @@ std::string CCommandFormatter::getMonitorData(PHLMONITOR m, eHyprCtlOutputFormat
     "x": {},
     "y": {},
     "activeWorkspace": {{
-        "address": "{}",
+        {}"address": "{}",
         "type": "{}",
         "name": "{}"
     }},
     "specialWorkspace": {{
-        "address": "{}",
+        {}"address": "{}",
         "type": "{}",
         "name": "{}"
     }},
@@ -275,15 +291,15 @@ std::string CCommandFormatter::getMonitorData(PHLMONITOR m, eHyprCtlOutputFormat
 
             m->m_id, escapeJSONStrings(m->m_name), escapeJSONStrings(m->m_shortDescription), escapeJSONStrings(m->m_output->make), escapeJSONStrings(m->m_output->model),
             escapeJSONStrings(m->m_output->serial), sc<int>(m->m_pixelSize.x), sc<int>(m->m_pixelSize.y), sc<int>(m->m_output->physicalSize.x),
-            sc<int>(m->m_output->physicalSize.y), m->m_refreshRate, sc<int>(m->m_position.x), sc<int>(m->m_position.y),
+            sc<int>(m->m_output->physicalSize.y), m->m_refreshRate, sc<int>(m->m_position.x), sc<int>(m->m_position.y), androidWorkspaceIDField(m->m_activeWorkspace),
             escapeJSONStrings(m->m_activeWorkspace ? m->m_activeWorkspace->addressableName() : ""), m->m_activeWorkspace ? Workspace::identityTypeName(*m->m_activeWorkspace) : "",
-            (!m->m_activeWorkspace ? "" : escapeJSONStrings(m->m_activeWorkspace->displayName())),
+            (!m->m_activeWorkspace ? "" : escapeJSONStrings(m->m_activeWorkspace->displayName())), androidWorkspaceIDField(m->m_activeSpecialWorkspace),
             escapeJSONStrings(m->m_activeSpecialWorkspace ? m->m_activeSpecialWorkspace->addressableName() : ""),
             m->m_activeSpecialWorkspace ? Workspace::identityTypeName(*m->m_activeSpecialWorkspace) : "",
             escapeJSONStrings(m->m_activeSpecialWorkspace ? m->m_activeSpecialWorkspace->displayName() : ""), sc<int>(m->m_reservedArea.left()), sc<int>(m->m_reservedArea.top()),
             sc<int>(m->m_reservedArea.right()), sc<int>(m->m_reservedArea.bottom()), m->m_scale, sc<int>(m->m_transform), tf(m == Desktop::focusState()->monitor()),
             tf(m->m_dpmsStatus), tf(m->m_output->state->state().adaptiveSync), rc<uint64_t>(m->m_solitaryClient.get()), getSolitaryBlockedReason(m, format),
-            tf(m->m_tearingState.activelyTearing), getTearingBlockedReason(m, format), rc<uint64_t>(m->m_lastScanout.get()), getDSBlockedReason(m, format), tf(m->m_enabled),
+            tf(m->m_tearingState.activelyTearing), getTearingBlockedReason(m, format), rc<uint64_t>(m->m_lastScanout.get()), getDSBlockedReason(m, format), tf(!m->m_enabled),
             formatToString(m->m_output->state->state().drmFormat), m->m_mirrorOf ? std::format("{}", m->m_mirrorOf->m_id) : "none", availableModesForOutput(m, format),
             (NCMType::toString(m->m_cmType)), (m->m_sdrBrightness), (m->m_sdrSaturation), (m->m_sdrMinLuminance), (m->m_sdrMaxLuminance), tf(!m->shouldUseSoftwareCursors()),
             StringUtils::backendStr(m->m_output->getBackend()->type()), tf(m->m_output->parsedEDID.hdrMetadata.has_value()),
@@ -403,7 +419,7 @@ std::string CCommandFormatter::getWindowData(PHLWINDOW w, eHyprCtlOutputFormat f
     "at": [{}, {}],
     "size": [{}, {}],
     "workspace": {{
-        "address": "{}",
+        {}"address": "{}",
         "type": "{}",
         "name": "{}"
     }},
@@ -434,10 +450,10 @@ std::string CCommandFormatter::getWindowData(PHLWINDOW w, eHyprCtlOutputFormat f
 }},)#",
             rc<uintptr_t>(w.get()), (w->mapped() ? "true" : "false"), (w->isHidden() ? "true" : "false"), (VISIBLE ? "true" : "false"), (w->acceptsInput() ? "true" : "false"),
             sc<int>(w->position(Desktop::View::IGeometric::GEOMETRIC_GOAL).x), sc<int>(w->position(Desktop::View::IGeometric::GEOMETRIC_GOAL).y),
-            sc<int>(w->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).x), sc<int>(w->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).y), escapeJSONStrings(WORKSPACE_ADDRESS),
-            w->workspaceType(), escapeJSONStrings(!w->m_workspace ? "" : w->m_workspace->displayName()), (sc<int>(w->isFloating()) == 1 ? "true" : "false"), w->monitorID(),
-            escapeJSONStrings(w->metadata().appID()), escapeJSONStrings(w->metadata().title()), escapeJSONStrings(w->metadata().initialAppID()),
-            escapeJSONStrings(w->metadata().initialTitle()), w->backend().pid(), (w->backend().isX11() ? "true" : "false"),
+            sc<int>(w->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).x), sc<int>(w->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).y), androidWorkspaceIDField(w->m_workspace),
+            escapeJSONStrings(WORKSPACE_ADDRESS), w->workspaceType(), escapeJSONStrings(!w->m_workspace ? "" : w->m_workspace->displayName()),
+            (sc<int>(w->isFloating()) == 1 ? "true" : "false"), w->monitorID(), escapeJSONStrings(w->metadata().appID()), escapeJSONStrings(w->metadata().title()),
+            escapeJSONStrings(w->metadata().initialAppID()), escapeJSONStrings(w->metadata().initialTitle()), w->backend().pid(), (w->backend().isX11() ? "true" : "false"),
             ((w->m_state & Desktop::View::WINDOW_STATE_PINNED) ? "true" : "false"), (w->fullscreenPolicy().pinFullscreened() ? "true" : "false"),
             sc<uint8_t>(Fullscreen::controller()->getFullscreenModes(w).internal), sc<uint8_t>(Fullscreen::controller()->getFullscreenModes(w).client),
             escapeJSONStrings(Fullscreen::controller()->getFullscreenHandlerNameAsString(w)), (w->fullscreenPolicy().allowedOverFullscreen() ? "true" : "false"),
@@ -513,7 +529,7 @@ std::string CCommandFormatter::getWorkspaceData(PHLWORKSPACE w, eHyprCtlOutputFo
 
     if (format == eHyprCtlOutputFormat::FORMAT_JSON) {
         return std::format(R"#({{
-    "address": "{}",
+    {}"address": "{}",
     "type": "{}",
     "name": "{}",
     "monitor": "{}",
@@ -525,7 +541,7 @@ std::string CCommandFormatter::getWorkspaceData(PHLWORKSPACE w, eHyprCtlOutputFo
     "ispersistent": {},
     "tiledLayout": "{}"
 }})#",
-                           escapeJSONStrings(w->addressableName()), Workspace::identityTypeName(*w), escapeJSONStrings(w->displayName()),
+                           androidWorkspaceIDField(w), escapeJSONStrings(w->addressableName()), Workspace::identityTypeName(*w), escapeJSONStrings(w->displayName()),
                            escapeJSONStrings(PMONITOR ? PMONITOR->m_name : "?"), escapeJSONStrings(PMONITOR ? std::to_string(PMONITOR->m_id) : "null"), w->getWindowCount(),
                            Fullscreen::controller()->hasFullscreen(w) ? "true" : "false", rc<uintptr_t>(PLASTW.get()), PLASTW ? escapeJSONStrings(PLASTW->metadata().title()) : "",
                            PERSISTENT ? "true" : "false", escapeJSONStrings(layoutName));
