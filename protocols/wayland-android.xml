@@ -26,7 +26,7 @@
     THIS SOFTWARE.
   </copyright>
 
-  <interface name="android_wlegl" version="2">
+  <interface name="android_wlegl" version="3">
     <description summary="Android EGL graphics buffer support">
       Interface used in the Android wrapper libEGL to share
       graphics buffers between the server and the client.
@@ -101,7 +101,7 @@
   </interface>
 
 
-  <interface name="android_wlegl_server_buffer_handle" version="1">
+  <interface name="android_wlegl_server_buffer_handle" version="3">
       <description summary="a server allocated buffer">
           On creation a server_side_buffer object will immediately send
           the "buffer_fd" and "buffer_ints" events needed by the client to
@@ -121,6 +121,18 @@
           <arg name="buffer" type="new_id" interface="wl_buffer"/>
           <arg name="format" type="int"/>
           <arg name="stride" type="int"/>
+      </event>
+      <event name="linear_layout" since="3">
+          <description summary="verified single-plane linear allocation">
+              Optional metadata sent before the buffer event. The first buffer_fd
+              contains one uncompressed 32-bit RGB plane at byte offset zero.
+              drm_format is its DRM FourCC and stride is its row pitch in bytes.
+              The server has verified the layout and allocation bounds using
+              Android mapper metadata, not inferred them from opaque handle ints.
+              Absence of this event means the layout is unspecified.
+          </description>
+          <arg name="drm_format" type="uint"/>
+          <arg name="stride" type="uint"/>
       </event>
   </interface>
 

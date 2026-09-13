@@ -38,4 +38,23 @@ After building the dependencies, `python3 android/build-core.py` configures and 
 
 The embedding host supplies `XDG_RUNTIME_DIR`, `ARLINUX_XWAYLAND` (absolute path to arlinux's packaged bionic Xwayland), `XKB_CONFIG_ROOT` and `MAGIC` (the installed magic.mgc). anhyprland starts Xwayland itself and implements its own XWM; it does not start or depend on anlabwc. Both compositors can use the same Xwayland build, with a separate Xwayland process and DISPLAY for each running session.
 
+### Allocated buffer layout
+
+`android_wlegl` version 3 optionally supplies a `linear_layout` event before
+the allocated `wl_buffer`. The compositor queries the already loaded Android
+IMapper stable-C HAL and decodes its standard FourCC, modifier, allocation-size
+and plane-layout metadata. Only a single uncompressed RGBA/BGRA plane at offset
+zero, with validated stride and allocation bounds, produces the event. This
+lets Turnip clients import modern handles without assuming Qualcomm's legacy
+private-handle magic. Version 1/2 clients receive the original events only;
+devices without a stable-C mapper supply no additional layout information.
+
+Local validation covered a PJZ110 layout, compressed and unsupported layouts,
+invalid dimensions/offsets, allocation bounds, malformed counts, and every
+truncation of the four metadata messages. These checks passed with
+AddressSanitizer and UndefinedBehaviorSanitizer.
+The native helper has been exercised under the Omarchy application UID on
+PJZ110: BGRA8888, 2256×39 pixels, 9216-byte stride. Desktop acceptance belongs
+to the embedding product's device tests.
+
 Current limitations include one compositor lifetime per host process, no audio bell backend, no Android build of the hyprctl/hyprpm tools, and incomplete device validation. Surface replacement is a separate API operation and does not restart the compositor. Linux libinput hardware configuration is excluded because Android input is injected by the host.

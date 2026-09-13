@@ -3,6 +3,7 @@
 #include "wayland-android.hpp"
 #include "types/Buffer.hpp"
 #include "../render/OpenGL.hpp"
+#include "../android/BufferLayout.hpp"
 #include "../render/gl/GLTexture.hpp"
 #include <android/hardware_buffer.h>
 #include <dlfcn.h>
@@ -205,7 +206,7 @@ struct CAndroidWleglProtocol::SState {
             manager->error(ANDROID_WLEGL_ERROR_BAD_HANDLE, "Invalid allocated native handle");
             return;
         }
-        auto reply = makeUnique<CAndroidWleglServerBufferHandle>(manager->client(), 1, id);
+        auto reply = makeUnique<CAndroidWleglServerBufferHandle>(manager->client(), manager->version() >= 3 ? 3 : 1, id);
         if (!reply->resource()) {
             manager->noMemory();
             return;
@@ -221,12 +222,16 @@ struct CAndroidWleglProtocol::SState {
             reply->sendBufferFd(payload[i]);
         wl_array ints{.size = sc<size_t>(handle->numInts) * sizeof(int32_t), .alloc = 0, .data = const_cast<int32_t*>(payload + handle->numFds)};
         reply->sendBufferInts(&ints);
+        if (manager->version() >= 3) {
+            if (const auto layout = androidBufferLinearLayout(raw))
+                reply->sendLinearLayout(layout->drmFormat, layout->stride);
+        }
         reply->sendBuffer(buffer->m_resource->getResource(), desc.format, desc.stride);
         // This reply object has no requests; all events have been queued.
     }
 };
 
-CAndroidWleglProtocol::CAndroidWleglProtocol() : IWaylandProtocol(&android_wlegl_interface, 2, "AndroidWlegl"), m_state(makeUnique<SState>()) {
+CAndroidWleglProtocol::CAndroidWleglProtocol() : IWaylandProtocol(&android_wlegl_interface, 3, "AndroidWlegl"), m_state(makeUnique<SState>()) {
     ;
 }
 CAndroidWleglProtocol::~CAndroidWleglProtocol() = default;

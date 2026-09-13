@@ -526,6 +526,7 @@ function(protocolnew protoPath protoName external)
            ${CMAKE_SOURCE_DIR}/protocols/${protoName}.hpp
     COMMAND hyprwayland-scanner ${path}/${protoName}.xml
             ${CMAKE_SOURCE_DIR}/protocols/
+    DEPENDS ${path}/${protoName}.xml
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   target_sources(hyprland_lib PRIVATE protocols/${protoName}.cpp
                                   protocols/${protoName}.hpp)
