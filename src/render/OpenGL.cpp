@@ -1452,6 +1452,16 @@ WP<CShader> CHyprOpenGLImpl::renderToFBInternal(SP<ITexture> tex, const STexture
     if (data.finalMonitorCM || (g_pHyprRenderer->m_renderData.currentWindow && g_pHyprRenderer->m_renderData.currentWindow->m_ruleApplicator->RGBX().valueOrDefault()))
         shaderFeatures &= ~SH_FEAT_RGBA;
 
+    // An opaque surface may carry arbitrary buffer alpha (for example Vulkan
+    // OPAQUE swapchains). Ignore it before applying compositor opacity and
+    // rounded edges. Do not apply this to intermediate framebuffer textures.
+    if (data.surface && data.surface->m_current.texture == tex && data.surface->m_current.size.x > 0 && data.surface->m_current.size.y > 0) {
+        CRegion transparent = CBox{{}, data.surface->m_current.size};
+        transparent.subtract(data.surface->m_current.opaque);
+        if (transparent.empty())
+            shaderFeatures &= ~SH_FEAT_RGBA;
+    }
+
     const auto surface                       = g_pHyprRenderer->m_renderData.surface;
     const auto WORK_BUFFER_IMAGE_DESCRIPTION = g_pHyprRenderer->m_renderData.pMonitor->workBufferImageDescription();
 
