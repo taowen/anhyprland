@@ -127,7 +127,7 @@ customStdenv.mkDerivation (finalAttrs: {
             ../src
             ../start
             ../systemd
-            ../VERSION
+            ../VERSION.txt
             (fs.fileFilter (file: file.hasExt "1") ../docs)
             (fs.fileFilter (file: file.hasExt "conf" || file.hasExt "in" || file.hasExt "lua" ) ../example)
             (fs.fileFilter (file: file.hasExt "sh") ../scripts)
@@ -154,7 +154,7 @@ customStdenv.mkDerivation (finalAttrs: {
     GIT_COMMIT_DATE = date;
     GIT_COMMIT_HASH = commit;
     GIT_DIRTY = if (commit == "") then "clean" else "dirty";
-    GIT_TAG = "v${trim (readFile "${finalAttrs.src}/VERSION")}";
+    GIT_TAG = "v${trim (readFile "${finalAttrs.src}/VERSION.txt")}";
   };
 
   depsBuildBuild = [

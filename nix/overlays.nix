@@ -11,7 +11,7 @@ let
       (builtins.substring 4 2 longDate)
       (builtins.substring 6 2 longDate)
     ]);
-  ver = lib.removeSuffix "\n" (builtins.readFile ../VERSION);
+  ver = lib.removeSuffix "\n" (builtins.readFile ../VERSION.txt);
 in
 {
   # Contains what a user is most likely to care about:

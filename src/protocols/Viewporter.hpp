@@ -3,7 +3,7 @@
 #include <vector>
 #include <cstdint>
 #include "WaylandProtocol.hpp"
-#include "viewporter.hpp"
+#include "../../protocols/viewporter.hpp"
 #include "../helpers/signal/Signal.hpp"
 
 class CWLSurfaceResource;

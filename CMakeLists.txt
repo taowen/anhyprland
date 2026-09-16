@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
 
 # Get version
-file(READ "${CMAKE_SOURCE_DIR}/VERSION" VER_RAW)
+file(READ "${CMAKE_SOURCE_DIR}/VERSION.txt" VER_RAW)
 string(STRIP ${VER_RAW} VER)
 
 project(
@@ -23,7 +23,8 @@ set(CMAKE_MESSAGE_LOG_LEVEL "STATUS")
 message(STATUS "Gathering git info")
 
 # Make shader files includable
-execute_process(COMMAND ./scripts/generateShaderIncludes.sh
+find_program(HYPRLAND_POSIX_SHELL NAMES sh bash REQUIRED)
+execute_process(COMMAND ${HYPRLAND_POSIX_SHELL} ./scripts/generateShaderIncludes.sh
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 RESULT_VARIABLE HYPR_SHADER_GEN_RESULT)
 if(NOT HYPR_SHADER_GEN_RESULT EQUAL 0)
@@ -230,7 +231,7 @@ if(Git_FOUND)
     execute_process(COMMAND ${GIT_EXECUTABLE} branch --show-current
       WORKING_DIRECTORY ${GIT_TOPLEVEL}
       OUTPUT_VARIABLE GIT_BRANCH OUTPUT_STRIP_TRAILING_WHITESPACE)
-    execute_process(COMMAND sh "-c" "${GIT_EXECUTABLE} show -s --format=%s --no-show-signature | sed \"s/\\\"/\'/g\""
+    execute_process(COMMAND ${HYPRLAND_POSIX_SHELL} "-c" "${GIT_EXECUTABLE} show -s --format=%s --no-show-signature | sed \"s/\\\"/\'/g\""
       WORKING_DIRECTORY ${GIT_TOPLEVEL}
       OUTPUT_VARIABLE GIT_COMMIT_MESSAGE OUTPUT_STRIP_TRAILING_WHITESPACE)
     execute_process(COMMAND ${GIT_EXECUTABLE} show -s --format=%cd --date=local --no-show-signature
