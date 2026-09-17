@@ -14,10 +14,12 @@ extern "C" {
 // Returns 0 after a requested shutdown, or a negative errno on failure.
 int anhyprland_run(struct ANativeWindow* window, int width, int height, const char* config, void (*ready)(void* userdata), void* userdata);
 // These calls are thread-safe. Window references are retained until processed.
-int anhyprland_window(struct ANativeWindow* window, int width, int height);
-int anhyprland_pointer(float x, float y, uint32_t button, int pressed);
-int anhyprland_axis(float dx, float dy);
-int anhyprland_key(uint32_t evdev, int pressed);
+int  anhyprland_window(struct ANativeWindow* window, int width, int height);
+int  anhyprland_pointer(float x, float y, uint32_t button, int pressed);
+int  anhyprland_cursor_shape(void);
+void anhyprland_report_cursor_shape(uint32_t shape);
+int  anhyprland_axis(float dx, float dy);
+int  anhyprland_key(uint32_t evdev, int pressed);
 // Type a Unicode character available in the active layout (base or Shift level).
 int anhyprland_unicode(uint32_t codepoint);
 int anhyprland_stop(void);

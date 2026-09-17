@@ -5,6 +5,7 @@
 #include <aquamarine/backend/Android.hpp>
 #include <android/native_window.h>
 #include <android/log.h>
+#include <atomic>
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <cerrno>
@@ -16,8 +17,9 @@
 struct SEmbedState {
     std::mutex                        mutex;
     std::deque<std::function<void()>> commands;
-    int                               eventFd = -1;
-    bool                              used    = false;
+    int                               eventFd     = -1;
+    bool                              used        = false;
+    std::atomic_uint32_t              cursorShape = 1;
 };
 
 static SEmbedState                     embed;
@@ -161,6 +163,12 @@ extern "C" int anhyprland_pointer(float x, float y, uint32_t button, int pressed
         if (auto output = backend())
             output->pointer(x, y, button, pressed);
     });
+}
+extern "C" int anhyprland_cursor_shape() {
+    return sc<int>(embed.cursorShape.load(std::memory_order_relaxed));
+}
+extern "C" void anhyprland_report_cursor_shape(uint32_t shape) {
+    embed.cursorShape.store(shape > 0 ? shape : 1, std::memory_order_relaxed);
 }
 extern "C" int anhyprland_axis(float dx, float dy) {
     return enqueue([=] {

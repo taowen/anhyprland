@@ -33,6 +33,9 @@
 #include "../debug/Overlay.hpp"
 #include "../notification/NotificationOverlay.hpp"
 #include "../layout/LayoutManager.hpp"
+#ifdef __ANDROID__
+#include "../android/Embed.h"
+#endif
 #include "../layout/space/Space.hpp"
 #include "../i18n/Engine.hpp"
 #include "../desktop/DesktopTypes.hpp"
@@ -2933,6 +2936,10 @@ void IHyprRenderer::setCursorSurface(SP<Desktop::View::CWLSurface> surf, int hot
     m_lastCursorData.hotspotX = hotspotX;
     m_lastCursorData.hotspotY = hotspotY;
 
+#ifdef __ANDROID__
+    anhyprland_report_cursor_shape(1);
+#endif
+
     if (m_cursorHidden && !force)
         return;
 
@@ -2981,6 +2988,10 @@ void IHyprRenderer::setCursorFromName(const std::string& name, bool force) {
     }
 
     m_lastCursorData.shape = newShape;
+
+#ifdef __ANDROID__
+    anhyprland_report_cursor_shape(sc<uint32_t>(newShape));
+#endif
 
     m_lastCursorData.surf.reset();
 
