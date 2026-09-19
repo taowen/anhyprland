@@ -14,11 +14,13 @@ deps = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deps)
 env = deps.cross_env()
 env["PATH"] = str(deps.HOST / "bin") + os.pathsep + env["PATH"]
+ninja = deps.native_ninja()
 protocol = Path(os.environ.get("WAYLAND_CORE_PROTOCOL_DIR", deps.ARLINUX / "build/ndk-src/wayland-1.25.0/protocol"))
 if not (protocol / "wayland.xml").is_file():
     raise SystemExit("Set WAYLAND_CORE_PROTOCOL_DIR to the matching Wayland source protocol directory")
 build = deps.BUILD / "android-hyprland"
 deps.run(["cmake", "-S", deps.ROOT, "-B", build, "-G", "Ninja",
+          f"-DCMAKE_MAKE_PROGRAM={ninja}",
           f"-DCMAKE_TOOLCHAIN_FILE={deps.NDK}/build/cmake/android.toolchain.cmake",
           "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-28", "-DANDROID_STL=c++_shared",
           "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",

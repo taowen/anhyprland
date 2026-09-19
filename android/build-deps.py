@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 
@@ -18,7 +19,30 @@ NDK = Path(os.environ.get("ANDROID_NDK_HOME", Path.home() / "Android/Sdk/ndk/29.
 NDK_HOST = "windows-x86_64" if os.name == "nt" else "linux-x86_64"
 NDK_TOOLBIN = NDK / "toolchains/llvm/prebuilt" / NDK_HOST / "bin"
 LOCK = json.loads((ROOT / "android/deps.lock.json").read_text())
-JOBS = os.environ.get("JOBS", "2")
+JOBS = os.environ.get("JOBS", str(min(os.cpu_count() or 2, 8)))
+
+
+def native_ninja():
+    configured = os.environ.get("CMAKE_MAKE_PROGRAM")
+    if configured and Path(configured).is_file():
+        return configured
+    if os.name == "nt":
+        sdk = Path(os.environ.get("ANDROID_HOME", os.environ.get("ANDROID_SDK_ROOT", "")))
+        bundled = sorted(sdk.glob("cmake/*/bin/ninja.exe"), reverse=True) if sdk else []
+        found = next((path for path in bundled if path.is_file()), None)
+        if found:
+            return str(found)
+    found = shutil.which("ninja")
+    if not found:
+        raise SystemExit("Ninja was not found on PATH")
+    return found
+
+
+def add_windows_runtime_path(env):
+    if os.name == "nt":
+        mingw = Path(os.environ.get("MSYS2_ROOT", "C:/tools/msys64")) / "ucrt64/bin"
+        env["PATH"] = str(mingw) + os.pathsep + env["PATH"]
+    return env
 
 
 def pkg_config_executable():
@@ -83,9 +107,9 @@ def cmake(name, options=(), host=False, target=None, src_override=None):
     build = BUILD / (("host-" if host else "android-") + name)
     env = os.environ.copy()
     if os.name == "nt":
-        flags_ninja = Path(sys.executable).parent / "Scripts/ninja.exe"
-        env["CMAKE_MAKE_PROGRAM"] = str(flags_ninja)
+        env["CMAKE_MAKE_PROGRAM"] = native_ninja()
         env["PKG_CONFIG"] = pkg_config_executable()
+        add_windows_runtime_path(env)
         if host:
             mingw = Path(os.environ.get("MSYS2_ROOT", "C:/tools/msys64")) / "ucrt64/bin"
             env["CC"] = str(mingw / "gcc.exe")
@@ -129,6 +153,7 @@ def cross_env():
                LDFLAGS=f"-L{hp(PREFIX)}/lib -L{hp(SHARED)}/lib")
     if os.name == "nt":
         env["PKG_CONFIG"] = pkg_config_executable()
+        add_windows_runtime_path(env)
     return env
 
 
