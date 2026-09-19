@@ -6,6 +6,7 @@
 #include <android/native_window.h>
 #include <android/log.h>
 #include <atomic>
+#include <cstdio>
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <cerrno>
@@ -226,6 +227,49 @@ extern "C" int anhyprland_unicode(uint32_t codepoint) {
                 return;
             }
         }
+
+        // Characters such as CJK are not present in the physical US keymap.
+        // Use the standard Linux Ctrl+Shift+U hexadecimal input sequence, as
+        // the anlabwc backend does, so Android IME composition has the same
+        // Unicode transport on both compositors.
+        const bool leftCtrl   = keyboard->getPressed(29);
+        const bool rightCtrl  = keyboard->getPressed(97);
+        const bool leftShift  = keyboard->getPressed(42);
+        const bool rightShift = keyboard->getPressed(54);
+        const auto tap = [&](uint32_t key) {
+            output->key(key, true);
+            output->key(key, false);
+        };
+        if (!leftCtrl && !rightCtrl)
+            output->key(29, true);
+        if (!leftShift && !rightShift)
+            output->key(42, true);
+        tap(22); // U
+        if (leftShift || (!leftShift && !rightShift))
+            output->key(42, false);
+        if (rightShift)
+            output->key(54, false);
+        if (leftCtrl || (!leftCtrl && !rightCtrl))
+            output->key(29, false);
+        if (rightCtrl)
+            output->key(97, false);
+
+        char hex[9];
+        const int length = std::snprintf(hex, sizeof(hex), "%x", codepoint);
+        constexpr uint32_t letters[] = {30, 48, 46, 32, 18, 33};
+        for (int index = 0; index < length; ++index) {
+            const unsigned digit = hex[index] <= '9' ? hex[index] - '0' : hex[index] - 'a' + 10;
+            tap(digit < 10 ? (digit == 0 ? 11 : digit + 1) : letters[digit - 10]);
+        }
+        tap(57); // Space commits the Unicode sequence.
+        if (leftCtrl)
+            output->key(29, true);
+        if (rightCtrl)
+            output->key(97, true);
+        if (leftShift)
+            output->key(42, true);
+        if (rightShift)
+            output->key(54, true);
     });
 }
 
