@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build"
 PREFIX = BUILD / "android-prefix"
 HOST = BUILD / "host-prefix"
+NATIVE_PKG = BUILD / "native-pkgconfig"
 ARLINUX = Path(os.environ.get("ARLINUX_DIR", ROOT.parent / "arlinux")).resolve()
 SHARED = ARLINUX / "build/ndk-prefix"
 NDK = Path(os.environ.get("ANDROID_NDK_HOME", Path.home() / "Android/Sdk/ndk/29.0.14206865"))
@@ -20,6 +21,7 @@ NDK_HOST = "windows-x86_64" if os.name == "nt" else "linux-x86_64"
 NDK_TOOLBIN = NDK / "toolchains/llvm/prebuilt" / NDK_HOST / "bin"
 LOCK = json.loads((ROOT / "android/deps.lock.json").read_text())
 JOBS = os.environ.get("JOBS", str(min(os.cpu_count() or 2, 8)))
+ANDROID_API = int(os.environ.get("ARLINUX_ANDROID_API", "28"))
 
 
 def native_ninja():
@@ -38,10 +40,24 @@ def native_ninja():
     return found
 
 
+def meson_command():
+    executable = shutil.which("meson")
+    if executable:
+        return [executable]
+    try:
+        import mesonbuild  # noqa: F401
+    except ImportError as error:
+        raise SystemExit("Meson is required: install it with 'python3 -m pip install meson'.") from error
+    return [sys.executable, "-m", "mesonbuild.mesonmain"]
+
+
 def add_windows_runtime_path(env):
     if os.name == "nt":
         mingw = Path(os.environ.get("MSYS2_ROOT", "C:/tools/msys64")) / "ucrt64/bin"
-        env["PATH"] = str(mingw) + os.pathsep + env["PATH"]
+        # Meson subprojects invoke `python3` for generators. Prefer the same
+        # Python that runs this script (and owns its modules) while retaining
+        # MinGW DLL/tool discovery immediately afterwards.
+        env["PATH"] = os.pathsep.join((str(Path(sys.executable).parent), str(mingw), env["PATH"]))
     return env
 
 
@@ -95,7 +111,10 @@ def source(name):
         run(["git", "-C", src, "checkout", "--detach", "FETCH_HEAD"])
     patch = ROOT / "android/patches" / (name + ".patch")
     if patch.exists():
-        applied = subprocess.run(["git", "-C", src, "apply", "--reverse", "--check", patch], capture_output=True)
+        applied = subprocess.run(
+            ["git", "-C", src, "apply", "--reverse", "--check", "--ignore-space-change", patch],
+            capture_output=True,
+        )
         if applied.returncode:
             run(["git", "-C", src, "apply", patch])
     return src
@@ -125,7 +144,7 @@ def cmake(name, options=(), host=False, target=None, src_override=None):
         flags.append(f"-DPKG_CONFIG_EXECUTABLE={env['PKG_CONFIG']}")
     if not host:
         flags += [f"-DCMAKE_TOOLCHAIN_FILE={NDK}/build/cmake/android.toolchain.cmake", "-DANDROID_ABI=arm64-v8a",
-                  "-DANDROID_PLATFORM=android-28", "-DANDROID_STL=c++_shared", f"-DCMAKE_PREFIX_PATH={PREFIX};{SHARED}",
+                  f"-DANDROID_PLATFORM=android-{ANDROID_API}", "-DANDROID_STL=c++_shared", f"-DCMAKE_PREFIX_PATH={PREFIX};{SHARED}",
                   f"-DCMAKE_FIND_ROOT_PATH={PREFIX};{SHARED}",
                   f"-DOPENGL_INCLUDE_DIR={NDK_TOOLBIN.parent}/sysroot/usr/include",
                   f"-DCMAKE_SHARED_LINKER_FLAGS=-L{PREFIX}/lib -L{SHARED}/lib",
@@ -142,9 +161,18 @@ def cross_env():
     suffix = ".cmd" if os.name == "nt" else ""
     exe = ".exe" if os.name == "nt" else ""
     hp = (lambda path: path.as_posix()) if os.name == "nt" else str
-    pkg_paths = os.pathsep.join(map(hp, [PREFIX / "lib/pkgconfig", PREFIX / "share/pkgconfig", SHARED / "lib/pkgconfig"]))
-    env.update(CC=hp(NDK_TOOLBIN / ("aarch64-linux-android28-clang" + suffix)),
-               CXX=hp(NDK_TOOLBIN / ("aarch64-linux-android28-clang++" + suffix)), AR=hp(NDK_TOOLBIN / ("llvm-ar" + exe)),
+    pkg_dirs = [PREFIX / "lib/pkgconfig", PREFIX / "share/pkgconfig", SHARED / "lib/pkgconfig"]
+    if os.name == "nt":
+        NATIVE_PKG.mkdir(parents=True, exist_ok=True)
+        scanner = SHARED / "../host-tools/windows-x86_64/bin/wayland-scanner.exe"
+        (NATIVE_PKG / "wayland-scanner.pc").write_text(
+            f"wayland_scanner={scanner.resolve().as_posix()}\n"
+            "prefix=/usr\nName: Wayland Scanner\nDescription: host wayland-scanner\nVersion: 1.25.0\n"
+        )
+        pkg_dirs.insert(0, NATIVE_PKG)
+    pkg_paths = os.pathsep.join(map(hp, pkg_dirs))
+    env.update(CC=hp(NDK_TOOLBIN / (f"aarch64-linux-android{ANDROID_API}-clang" + suffix)),
+               CXX=hp(NDK_TOOLBIN / (f"aarch64-linux-android{ANDROID_API}-clang++" + suffix)), AR=hp(NDK_TOOLBIN / ("llvm-ar" + exe)),
                RANLIB=hp(NDK_TOOLBIN / ("llvm-ranlib" + exe)), STRIP=hp(NDK_TOOLBIN / ("llvm-strip" + exe)),
                PKG_CONFIG_PATH=pkg_paths,
                PKG_CONFIG_LIBDIR=pkg_paths,
@@ -173,10 +201,11 @@ def meson(name, options=()):
     # Meson validates --prefix using the target OS. Android therefore needs a
     # POSIX prefix even though the install staging directory is on Windows.
     meson_prefix = "/" if os.name == "nt" else str(PREFIX)
-    run(["meson", "setup", *( ["--reconfigure"] if (build / "meson-info").exists() else []), build, src,
+    meson = meson_command()
+    run([*meson, "setup", *( ["--reconfigure"] if (build / "meson-info").exists() else []), build, src,
          "--cross-file", cross, "--prefix", meson_prefix, "--libdir=lib", "--buildtype=release", *options], env=env)
-    run(["meson", "compile", "-C", build, "-j", JOBS], env=env)
-    install = ["meson", "install", "-C", build]
+    run([*meson, "compile", "-C", build, "-j", JOBS], env=env)
+    install = [*meson, "install", "-C", build]
     if os.name == "nt":
         install += ["--destdir", PREFIX]
     run(install, env=env)

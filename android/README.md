@@ -16,6 +16,10 @@ The full arm64 Android shared library compiles and links with NDK 29. The standa
 
 Use the shared NDK dependency prefix from a built arlinux checkout. Set `ARLINUX_DIR` if it is not the sibling `arlinux` directory. `ANDROID_NDK_HOME` can override NDK 29.0.14206865. The host needs CMake, Ninja, Meson, pkg-config, a C++23 compiler, Python, Autoconf, Automake and Libtool. `JOBS` defaults to two to limit memory use.
 
+The arlinux `tools/build.ps1 native` entry point builds the complete pinned
+dependency set before compiling the compositor. Individual recipes can also be
+run directly while developing, for example:
+
 ```sh
 python3 android/build-deps.py scanner hyprutils hyprlang aquamarine
 ```

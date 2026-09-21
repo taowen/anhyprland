@@ -4,7 +4,7 @@ android {
     compileSdk 36
     defaultConfig {
         applicationId 'io.taowen.anhyprland.smoke'
-        minSdk 28
+        minSdk Integer.parseInt(System.getenv('ARLINUX_ANDROID_API') ?: '28')
         targetSdk 28
         versionCode 1
         versionName '0.1'

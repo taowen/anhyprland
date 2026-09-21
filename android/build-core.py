@@ -22,7 +22,7 @@ build = deps.BUILD / "android-hyprland"
 deps.run(["cmake", "-S", deps.ROOT, "-B", build, "-G", "Ninja",
           f"-DCMAKE_MAKE_PROGRAM={ninja}",
           f"-DCMAKE_TOOLCHAIN_FILE={deps.NDK}/build/cmake/android.toolchain.cmake",
-          "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-28", "-DANDROID_STL=c++_shared",
+          "-DANDROID_ABI=arm64-v8a", f"-DANDROID_PLATFORM=android-{deps.ANDROID_API}", "-DANDROID_STL=c++_shared",
           "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
           "-DCMAKE_DISABLE_PRECOMPILE_HEADERS=OFF", "-DBUILD_TESTING=OFF",
           f"-DCMAKE_INSTALL_PREFIX={deps.PREFIX}", "-DCMAKE_INSTALL_LIBDIR=lib",

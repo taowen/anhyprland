@@ -17,6 +17,7 @@ ASSETS = HERE / 'app/src/main/assets/runtime'
 JNI.mkdir(parents=True, exist_ok=True)
 ASSETS.mkdir(parents=True, exist_ok=True)
 PREFIX = REPO / 'build/android-prefix'
+ANDROID_API = os.environ.get('ARLINUX_ANDROID_API', '28')
 SEARCH = [PREFIX / 'lib', ARLINUX / 'build/ndk-prefix/lib',
           NDK / 'toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android']
 SYSTEM = {'libandroid.so', 'liblog.so', 'libEGL.so', 'libGLESv2.so', 'libGLESv3.so',
@@ -41,7 +42,7 @@ def copy_library(source, name=None):
 
 copy_library(REPO / 'build/android-hyprland/libanhyprland.so')
 copy_library(ARLINUX / 'build/ndk-prefix/bin/Xwayland', 'libxwayland.so')
-subprocess.run([TOOLS / 'aarch64-linux-android28-clang++', '-std=c++23', '-shared', '-fPIC',
+subprocess.run([TOOLS / f'aarch64-linux-android{ANDROID_API}-clang++', '-std=c++23', '-shared', '-fPIC',
                 '-I' + str(REPO / 'src/android'), HERE / 'app/src/main/cpp/smoke.cpp',
                 '-L' + str(JNI), '-lanhyprland', '-landroid', '-llog', '-o', JNI / 'libsmoke.so'], check=True)
 generated = HERE / 'app/build/smoke-native'
@@ -51,13 +52,13 @@ for mode, filename in [('client-header', 'xdg-shell-client-protocol.h'), ('priva
     subprocess.run(['wayland-scanner', mode, protocol, generated / filename], check=True)
 for mode, filename in [('client-header', 'wayland-android-client-protocol.h'), ('private-code', 'wayland-android-protocol.c')]:
     subprocess.run(['wayland-scanner', mode, REPO / 'protocols/wayland-android.xml', generated / filename], check=True)
-subprocess.run([TOOLS / 'aarch64-linux-android28-clang', '-I' + str(generated),
+subprocess.run([TOOLS / f'aarch64-linux-android{ANDROID_API}-clang', '-I' + str(generated),
                 '-I' + str(ARLINUX / 'build/ndk-prefix/include'),
                 HERE / 'app/src/main/cpp/shm-client.c', HERE / 'app/src/main/cpp/ahb-client.c', generated / 'xdg-shell-protocol.c', generated / 'wayland-android-protocol.c',
                 '-L' + str(ARLINUX / 'build/ndk-prefix/lib'), '-lwayland-client', '-landroid', '-lEGL', '-lGLESv3', '-ldl',
                 '-o', JNI / 'libshm-smoke.so'], check=True)
 copy_library(ARLINUX / 'build/ndk-prefix/lib/libwayland-client.so')
-subprocess.run([TOOLS / 'aarch64-linux-android28-clang', '-I' + str(ARLINUX / 'build/ndk-prefix/include'),
+subprocess.run([TOOLS / f'aarch64-linux-android{ANDROID_API}-clang', '-I' + str(ARLINUX / 'build/ndk-prefix/include'),
                 HERE / 'app/src/main/cpp/x11-client.c', '-L' + str(ARLINUX / 'build/ndk-prefix/lib'), '-lxcb',
                 '-o', JNI / 'libx11-smoke.so'], check=True)
 shutil.copytree('/usr/share/X11/xkb', ASSETS / 'xkb', dirs_exist_ok=True)
