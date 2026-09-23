@@ -31,6 +31,7 @@ deps.run(["cmake", "-S", deps.ROOT, "-B", build, "-G", "Ninja",
           f"-Dhyprwayland-scanner_DIR={deps.HOST}/lib/cmake/hyprwayland-scanner",
           f"-DWAYLAND_CORE_PROTOCOL_DIR={protocol}",
           f"-DOPENGL_INCLUDE_DIR={deps.NDK_TOOLBIN.parent}/sysroot/usr/include",
+          "-DCMAKE_HAVE_LIBC_PTHREAD=1",
           f"-DCMAKE_SHARED_LINKER_FLAGS=-L{deps.PREFIX}/lib -L{deps.SHARED}/lib",
           f"-DCMAKE_EXE_LINKER_FLAGS=-L{deps.PREFIX}/lib -L{deps.SHARED}/lib"], env=env)
 deps.run(["cmake", "--build", build, "--target", args.target, "-j", deps.JOBS, "--", "-k", "0"], env=env)
