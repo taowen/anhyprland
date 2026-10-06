@@ -167,6 +167,24 @@ void CYibuAlgorithm::recalculate(eRecalculateReason) {
     if (monitor)
         g_pHyprRenderer->damageMonitor(monitor);
     controls();
+    focusMain();
+}
+
+// Blocking a focused task drops keyboard focus, and unblocking it later does not
+// restore it (e.g. OpenCode becomes main again after its first window closes).
+// Give the main task focus whenever nothing else that may hold it is focused.
+void CYibuAlgorithm::focusMain() {
+    auto main = m_main.lock();
+    if (!main || !main->window() || !m_parent || !m_parent->space()->workspace()->visible())
+        return;
+    auto focused = Desktop::focusState()->window();
+    if (focused == main->window())
+        return;
+    if (focused && !std::ranges::any_of(m_tasks, [&](const auto& t) { return t.lock() && t.lock()->window() == focused; }))
+        return; // a popup, dialog or other window outside the task slots keeps focus
+    m_arranging = true; // the focus listener must not re-enter select()/recalculate()
+    Desktop::focusState()->fullWindowFocus(main->window(), Desktop::FOCUS_REASON_SWITCH_TO_WINDOW_SOFT);
+    m_arranging = false;
 }
 
 void CYibuAlgorithm::controls() {

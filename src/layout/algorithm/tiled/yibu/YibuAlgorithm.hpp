@@ -65,6 +65,7 @@ namespace Layout::Tiled {
         CHyprSignalListener                                   m_focus;
         void                                                  select(SP<ITarget>);
         void                                                  used(SP<ITarget>);
+        void                                                  focusMain();
         int                                                   slot(SP<ITarget>) const;
         void                                                  controls();
         double                                                unit() const;
