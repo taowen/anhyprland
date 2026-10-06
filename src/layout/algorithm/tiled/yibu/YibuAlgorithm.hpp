@@ -41,7 +41,7 @@ namespace Layout::Tiled {
             CONTROL_ROW,
             CONTROL_FLOAT,
         };
-        std::vector<WP<ITarget>>   m_tasks;
+        std::vector<WP<ITarget>>   m_tasks, m_recent; // open order (task strip), use order (oldest first)
         WP<ITarget>                m_main;
         std::array<WP<ITarget>, 3> m_slots;
         std::array<CBox, 3>        m_boxes;
@@ -64,6 +64,7 @@ namespace Layout::Tiled {
         wl_event_source*                                      m_hoverTimer = nullptr;
         CHyprSignalListener                                   m_focus;
         void                                                  select(SP<ITarget>);
+        void                                                  used(SP<ITarget>);
         int                                                   slot(SP<ITarget>) const;
         void                                                  controls();
         double                                                unit() const;

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cctype>
 #include <format>
+#include <ranges>
 #include "../../../../render/Texture.hpp"
 #include "../../../../render/pass/RectPassElement.hpp"
 #include "../../../../render/pass/TexPassElement.hpp"
@@ -63,11 +64,17 @@ void CYibuAlgorithm::select(SP<ITarget> target) {
     if (index >= 0)
         m_slots[index] = m_main;
     m_main = target;
+    used(target);
     recalculate();
+}
+void CYibuAlgorithm::used(SP<ITarget> target) {
+    std::erase_if(m_recent, [&](auto& t) { return !t || t.lock() == target; });
+    m_recent.push_back(target);
 }
 void CYibuAlgorithm::newTarget(SP<ITarget> target) {
     m_tasks.push_back(target);
     m_main = target;
+    used(target);
     recalculate();
 }
 void CYibuAlgorithm::movedTarget(SP<ITarget> target, std::optional<Vector2D>) {
@@ -82,12 +89,14 @@ void CYibuAlgorithm::removeTarget(SP<ITarget> target) {
         if (s.lock() == target)
             s.reset();
     std::erase_if(m_tasks, [&](auto& t) { return !t || t.lock() == target; });
+    std::erase_if(m_recent, [&](auto& t) { return !t || t.lock() == target; });
     if (m_main.lock() == target)
         m_main = getNextCandidate(target);
     recalculate();
 }
+// The most recently used task that is neither leaving the main area nor pinned.
 SP<ITarget> CYibuAlgorithm::getNextCandidate(SP<ITarget> old) {
-    for (auto& t : m_tasks)
+    for (auto& t : m_recent | std::views::reverse)
         if (auto target = t.lock(); target && target != old && slot(target) < 0)
             return target;
     return nullptr;
