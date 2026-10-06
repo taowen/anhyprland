@@ -8,6 +8,7 @@
 namespace Render {
     class ITexture;
 }
+class CHyprColor;
 struct wl_event_source;
 
 namespace Layout::Tiled {
@@ -32,17 +33,28 @@ namespace Layout::Tiled {
         void                    render(PHLMONITOR monitor);
 
       private:
+        enum eControlStyle : uint8_t {
+            CONTROL_BUTTON,
+            CONTROL_PRIMARY,
+            CONTROL_TASK,
+            CONTROL_CLOSE,
+            CONTROL_ROW,
+            CONTROL_FLOAT,
+        };
         std::vector<WP<ITarget>>   m_tasks;
         WP<ITarget>                m_main;
         std::array<WP<ITarget>, 3> m_slots;
         std::array<CBox, 3>        m_boxes;
-        CBox                       m_mainBox;
+        std::array<CBox, 3>        m_fitted;
+        CBox                       m_mainBox, m_menuBox;
         bool                       m_enabled = true, m_left = false, m_arranging = false;
-        int                        m_toolbarPixels = 200, m_pressedSlot = -1;
+        int                        m_toolbarPixels = 200, m_pressedSlot = -1, m_hoverControl = -1;
         struct SControl {
-            CBox        box;
-            std::string label;
-            int         action = 0, target = 0;
+            CBox          box;
+            std::string   label, app;
+            int           action = 0, target = 0;
+            eControlStyle style  = CONTROL_BUTTON;
+            bool          active = false;
         };
         std::vector<SControl>                                 m_controls;
         std::optional<SControl>                               m_pressedControl;
@@ -54,5 +66,7 @@ namespace Layout::Tiled {
         void                                                  select(SP<ITarget>);
         int                                                   slot(SP<ITarget>) const;
         void                                                  controls();
+        double                                                unit() const;
+        SP<Render::ITexture>                                  text(const std::string& label, const CHyprColor& color, int pixels, int weight, int maxWidth);
     };
 }
