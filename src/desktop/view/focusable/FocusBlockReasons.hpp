@@ -13,6 +13,7 @@ namespace Desktop::View {
         FOCUS_BLOCK_GROUP_INACTIVE   = (1 << 0),
         FOCUS_BLOCK_MONOCLE_INACTIVE = (1 << 1),
         FOCUS_BLOCK_BELOW_FULLSCREEN = (1 << 2),
+        FOCUS_BLOCK_YIBU_INACTIVE    = (1 << 3),
 
         FOCUS_BLOCK_ALL = std::numeric_limits<std::underlying_type_t<eFocusBlockReason>>::max(),
     };

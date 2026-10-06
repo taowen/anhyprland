@@ -1,6 +1,7 @@
 #include "ElementRenderer.hpp"
 #include "Renderer.hpp"
 #include "../layout/LayoutManager.hpp"
+#include "../layout/target/Target.hpp"
 #include "../desktop/view/window/Window.hpp"
 #include "../desktop/view/window/WindowEffectsController.hpp"
 #include "../desktop/view/window/WindowPresentation.hpp"
@@ -87,7 +88,11 @@ void IElementRenderer::calculateUVForSurface(PHLWINDOW pWindow, SP<CWLSurfaceRes
             }
         }
 
-        if (projSize != Vector2D{} && fixMisalignedFSV1) {
+        const bool SCALED_TASK = pWindow && pWindow->layoutTarget() && pWindow->layoutTarget()->clientSize().has_value();
+        if (SCALED_TASK) {
+            // A layout deliberately displays the full client at a smaller size.
+            // Keep viewport source UVs; resizing heuristics would crop the image.
+        } else if (projSize != Vector2D{} && fixMisalignedFSV1) {
             // instead of nearest_neighbor (we will repeat / skip)
             // just cut off / expand surface
             const Vector2D PIXELASUV   = Vector2D{1, 1} / pSurface->m_current.bufferSize;

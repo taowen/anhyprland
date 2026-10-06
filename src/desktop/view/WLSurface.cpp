@@ -5,6 +5,7 @@
 #include "../../protocols/LayerShell.hpp"
 #include "../../protocols/FractionalScale.hpp"
 #include "../../render/Renderer.hpp"
+#include "../../layout/target/Target.hpp"
 
 #include <cmath>
 
@@ -131,6 +132,11 @@ CRegion CWLSurface::computeDamage(const std::optional<CBox>& box) const {
     // go from buffer coords in the damage to hl logical
     damage.scale(SURFSIZE / BUFSIZE);
 
+    if (auto window = CWindow::fromView(m_view.lock()); window && window->layoutTarget() && window->layoutTarget()->clientSize()) {
+        const auto reported = window->backend().reportedSize();
+        if (reported.x > 0 && reported.y > 0)
+            damage.scale(window->size(IGeometric::GEOMETRIC_CURRENT) / reported);
+    }
     if (boxSize)
         damage.intersect(CBox{{}, boxSize.value()});
 

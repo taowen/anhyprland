@@ -33,6 +33,7 @@
 #include "../debug/Overlay.hpp"
 #include "../notification/NotificationOverlay.hpp"
 #include "../layout/LayoutManager.hpp"
+#include "../layout/algorithm/tiled/yibu/YibuAlgorithm.hpp"
 #ifdef __ANDROID__
 #include "../android/Embed.h"
 #endif
@@ -2245,6 +2246,8 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
         } else {
             CBox renderBox = {0, 0, sc<int>(pMonitor->m_transformedSize.x), sc<int>(pMonitor->m_transformedSize.y)};
             renderWorkspace(pMonitor, pMonitor->m_activeWorkspace, NOW, renderBox);
+            if (auto yibu = Layout::Tiled::CYibuAlgorithm::active())
+                yibu->render(pMonitor);
             renderLockscreen(pMonitor, NOW, renderBox);
 
             // render IME even above the lockscreen - allow the user to use it to potentially input stuff on it.

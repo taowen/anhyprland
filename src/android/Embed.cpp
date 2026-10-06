@@ -2,6 +2,7 @@
 #include "Embed.h"
 #include "../Compositor.hpp"
 #include "../managers/SeatManager.hpp"
+#include "../layout/algorithm/tiled/yibu/YibuAlgorithm.hpp"
 #include <aquamarine/backend/Android.hpp>
 #include <android/native_window.h>
 #include <android/log.h>
@@ -161,6 +162,7 @@ extern "C" int anhyprland_window(ANativeWindow* window, int width, int height) {
 
 extern "C" int anhyprland_pointer(float x, float y, uint32_t button, int pressed) {
     return enqueue([=] {
+        if (auto layout = Layout::Tiled::CYibuAlgorithm::active(); layout && layout->pointer(x, y, button, pressed)) return;
         if (auto output = backend())
             output->pointer(x, y, button, pressed);
     });

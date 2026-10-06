@@ -464,7 +464,8 @@ void CWindowTarget::sendWindowSize(bool force) {
     LOG(Log::TRACE, "sendWindowSize: window:{:x},title:{} with real pos {}, real size {} (force: {})", rc<uintptr_t>(m_window.get()), m_window->metadata().title(),
         m_window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL), m_window->size(Desktop::View::IGeometric::GEOMETRIC_GOAL), force);
 
-    m_window->backend().configure(CBox{m_window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL), m_window->size(Desktop::View::IGeometric::GEOMETRIC_GOAL)}, PMONITOR, force);
+    m_window->backend().configure(CBox{m_window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL),
+        m_box.clientSize.value_or(m_window->size(Desktop::View::IGeometric::GEOMETRIC_GOAL))}, PMONITOR, force);
 }
 
 void CWindowTarget::damageEntire() {

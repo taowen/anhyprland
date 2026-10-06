@@ -6,6 +6,7 @@
 #include "../../protocols/DRMSyncobj.hpp"
 #include "../../managers/input/InputManager.hpp"
 #include "../../layout/LayoutManager.hpp"
+#include "../../layout/target/Target.hpp"
 #include "../Renderer.hpp"
 
 #include <hyprutils/math/Box.hpp>
@@ -56,13 +57,18 @@ CBox CSurfacePassElement::getTexBox() {
 
         windowBox = {sc<int>(outputX) + m_data.pos.x + m_data.localPos.x, sc<int>(outputY) + m_data.pos.y + m_data.localPos.y, std::max(sc<float>(SURFSIZE.x), 2.F),
                      std::max(sc<float>(SURFSIZE.y), 2.F)};
-        if (m_data.pWindow && m_data.pWindow->sizeAnimation()->isBeingAnimated() && m_data.surface && !m_data.mainSurface && m_data.squishOversized /* subsurface */) {
+        const bool scaledTask = m_data.pWindow && m_data.pWindow->layoutTarget() && m_data.pWindow->layoutTarget()->clientSize().has_value();
+        if (m_data.pWindow && (m_data.pWindow->sizeAnimation()->isBeingAnimated() || scaledTask) && m_data.surface && !m_data.mainSurface && m_data.squishOversized /* subsurface */) {
             // adjust subsurfaces to the window
             const auto REPORTED = m_data.pWindow->backend().reportedSize();
             if (REPORTED.x != 0 && REPORTED.y != 0) {
                 const auto REALSIZE = m_data.pWindow->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
                 windowBox.width     = (windowBox.width / REPORTED.x) * REALSIZE.x;
                 windowBox.height    = (windowBox.height / REPORTED.y) * REALSIZE.y;
+                if (scaledTask) {
+                    windowBox.x = outputX + m_data.pos.x + m_data.localPos.x * REALSIZE.x / REPORTED.x;
+                    windowBox.y = outputY + m_data.pos.y + m_data.localPos.y * REALSIZE.y / REPORTED.y;
+                }
             }
         }
     }

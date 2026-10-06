@@ -10,6 +10,7 @@
 #include "../algorithm/floating/default/DefaultFloatingAlgorithm.hpp"
 #include "../algorithm/tiled/dwindle/DwindleAlgorithm.hpp"
 #include "../algorithm/tiled/master/MasterAlgorithm.hpp"
+#include "../algorithm/tiled/yibu/YibuAlgorithm.hpp"
 #include "../algorithm/tiled/scrolling/ScrollingAlgorithm.hpp"
 #include "../algorithm/tiled/monocle/MonocleAlgorithm.hpp"
 
@@ -30,6 +31,7 @@ CWorkspaceAlgoMatcher::CWorkspaceAlgoMatcher() {
     m_tiledAlgos = {
         {"dwindle", [] { return makeUnique<Tiled::CDwindleAlgorithm>(); }},
         {"master", [] { return makeUnique<Tiled::CMasterAlgorithm>(); }},
+        {"yibu", [] { return makeUnique<Tiled::CYibuAlgorithm>(); }},
         {"scrolling", [] { return makeUnique<Tiled::CScrollingAlgorithm>(); }},
         {"monocle", [] { return makeUnique<Tiled::CMonocleAlgorithm>(); }},
     };
@@ -41,6 +43,7 @@ CWorkspaceAlgoMatcher::CWorkspaceAlgoMatcher() {
     m_algoNames = {
         {&typeid(Tiled::CDwindleAlgorithm), "dwindle"},
         {&typeid(Tiled::CMasterAlgorithm), "master"},
+        {&typeid(Tiled::CYibuAlgorithm), "yibu"},
         {&typeid(Tiled::CScrollingAlgorithm), "scrolling"},
         {&typeid(Tiled::CMonocleAlgorithm), "monocle"},
         {&typeid(Floating::CDefaultFloatingAlgorithm), "default"},
