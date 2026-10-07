@@ -150,6 +150,11 @@ add_test(
   COMMAND attachments "attachments")
 add_dependencies(tests attachments)
 
+add_executable(swapchain "tests/Swapchain.cpp")
+target_link_libraries(swapchain PRIVATE PkgConfig::deps aquamarine)
+add_test(NAME swapchain COMMAND swapchain)
+add_dependencies(tests swapchain)
+
 add_executable(output "tests/Output.cpp")
 target_include_directories(output PRIVATE "./src/include")
 target_link_libraries(output PRIVATE PkgConfig::deps aquamarine)

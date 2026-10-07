@@ -33,3 +33,6 @@ configure_file(aquamarine.pc.in aquamarine.pc @ONLY)
 install(TARGETS aquamarine)
 install(DIRECTORY ${AQ_ROOT}/include/aquamarine DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/aquamarine.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
+add_executable(swapchain-test EXCLUDE_FROM_ALL ${AQ_ROOT}/tests/Swapchain.cpp)
+target_link_libraries(swapchain-test PRIVATE aquamarine)

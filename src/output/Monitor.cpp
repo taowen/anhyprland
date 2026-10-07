@@ -2639,13 +2639,16 @@ bool CMonitorState::updateSwapchain() {
         return true;
     }
 
-    if (OPTIONS.format == m_owner->m_drmFormat && OPTIONS.scanout && OPTIONS.length == 3 && OPTIONS.size == MODE->pixelSize)
+    // Android presents a GPU copy into its own Surface queue and waits for that
+    // copy before returning. Retain one intermediate canvas for partial redraws.
+    const size_t BUFFER_COUNT = m_owner->m_output->getBackend()->type() == Aquamarine::AQ_BACKEND_ANDROID ? 1 : 3;
+    if (OPTIONS.format == m_owner->m_drmFormat && OPTIONS.scanout && OPTIONS.length == BUFFER_COUNT && OPTIONS.size == MODE->pixelSize)
         return true;
 
     auto options    = OPTIONS;
     options.format  = m_owner->m_drmFormat;
     options.scanout = true;
-    options.length  = 3;
+    options.length  = BUFFER_COUNT;
     options.size    = MODE->pixelSize;
     return m_owner->m_output->swapchain->reconfigure(options);
 }

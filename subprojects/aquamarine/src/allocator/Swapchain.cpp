@@ -27,6 +27,8 @@ bool Aquamarine::CSwapchain::reconfigure(const SSwapchainOptions& options_) {
         // clear the swapchain
         allocator->getBackend()->log(AQ_LOG_DEBUG, "Swapchain: Clearing");
         buffers.clear();
+        acquisitions = 0;
+        lastAcquired = 0;
         options = options_;
         return true;
     }
@@ -66,7 +68,8 @@ SP<IBuffer> Aquamarine::CSwapchain::next(int* age) {
     lastAcquired = (lastAcquired + 1) % options.length;
 
     if (age)
-        *age = options.length; // we always just rotate
+        *age = acquisitions < options.length ? 0 : options.length;
+    ++acquisitions;
 
     return buffers.at(lastAcquired);
 }
@@ -90,6 +93,8 @@ bool Aquamarine::CSwapchain::fullReconfigure(const SSwapchainOptions& options_) 
     }
 
     buffers = std::move(bfs);
+    acquisitions = 0;
+    lastAcquired = 0;
 
     return true;
 }
@@ -97,6 +102,10 @@ bool Aquamarine::CSwapchain::fullReconfigure(const SSwapchainOptions& options_) 
 bool Aquamarine::CSwapchain::resize(size_t newSize) {
     if (newSize == buffers.size())
         return true;
+
+    // Allocation or rotation changes invalidate the previous buffer-age history.
+    acquisitions = 0;
+    lastAcquired = 0;
 
     if (newSize < buffers.size()) {
         while (buffers.size() > newSize) {
@@ -127,6 +136,8 @@ const SSwapchainOptions& Aquamarine::CSwapchain::currentOptions() {
 }
 
 void Aquamarine::CSwapchain::rollback() {
+    if (acquisitions > 0)
+        --acquisitions;
     lastAcquired--;
     if (lastAcquired < 0)
         lastAcquired = options.length - 1;

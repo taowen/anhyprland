@@ -45,6 +45,7 @@ namespace Aquamarine {
         Hyprutils::Memory::CWeakPointer<IBackendImplementation> backendImpl;
         std::vector<Hyprutils::Memory::CSharedPointer<IBuffer>> buffers;
         int                                                     lastAcquired = 0;
+        uint64_t                                                acquisitions = 0;
 
         friend class CGBMBuffer;
     };
