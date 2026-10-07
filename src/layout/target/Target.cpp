@@ -1,11 +1,20 @@
 #include "Target.hpp"
 #include "../space/Space.hpp"
 #include "../../debug/log/Logger.hpp"
+#include "../../managers/fullscreen/FullscreenController.hpp"
 
 #include <hyprutils/utils/ScopeGuard.hpp>
 
 using namespace Layout;
 using namespace Hyprutils::Utils;
+
+std::optional<Vector2D> ITarget::clientSize() {
+    // Configure, texture projection and damage must agree on whether this is
+    // a scaled layout preview. The stored tiled box survives fullscreen/float.
+    if (floating() || (window() && Fullscreen::controller()->isFullscreen(window())))
+        return std::nullopt;
+    return m_box.clientSize;
+}
 
 void ITarget::setPositionGlobal(const STargetBox& box, uint8_t) {
     m_box = box;

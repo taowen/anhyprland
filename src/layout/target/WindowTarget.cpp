@@ -466,9 +466,7 @@ void CWindowTarget::sendWindowSize(bool force) {
 
     // The layout's stable client size is only for tiled previews. A fullscreen
     // or floating window must receive its actual size, not a stale preview size.
-    const bool USE_LAYOUT_SIZE = !floating() && !Fullscreen::controller()->isFullscreen(m_window.lock());
-    const auto SIZE =
-        USE_LAYOUT_SIZE ? m_box.clientSize.value_or(m_window->size(Desktop::View::IGeometric::GEOMETRIC_GOAL)) : m_window->size(Desktop::View::IGeometric::GEOMETRIC_GOAL);
+    const auto SIZE = clientSize().value_or(m_window->size(Desktop::View::IGeometric::GEOMETRIC_GOAL));
     m_window->backend().configure(CBox{m_window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL), SIZE}, PMONITOR, force);
 }
 
