@@ -1181,6 +1181,9 @@ void IHyprRenderer::renderAllClientsForWorkspace(PHLMONITOR pMonitor, PHLWORKSPA
         renderFadeouts(pMonitor, Desktop::FADEOUT_PLANE_LAYER_BOTTOM);
     }
 
+    if (auto yibu = Layout::Tiled::CYibuAlgorithm::active(); yibu && pWorkspace == pMonitor->m_activeWorkspace)
+        yibu->render(pMonitor, true);
+
     // pre window pass
     if (preBlurQueued(pMonitor))
         m_renderPass.add(makeUnique<CPreBlurElement>());
@@ -2599,7 +2602,11 @@ void IHyprRenderer::sendFrameEventsToWorkspace(PHLMONITOR pMonitor, PHLWORKSPACE
         if (alphaModifier && !alphaModifier->alphaNonZero())
             continue;
 
-        view->wlSurface()->resource()->frame(now);
+        // Idle frames must also wake native X11 child presenters. Waking only
+        // the root surface leaves their FIFO queues waiting indefinitely.
+        view->wlSurface()->resource()->breadthfirst([&now](SP<CWLSurfaceResource> surface, const Vector2D&, void*) {
+            surface->frame(now);
+        }, nullptr);
     }
 }
 

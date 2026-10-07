@@ -276,7 +276,7 @@ static CHyprColor badgeColor(const std::string& title) {
     return palette[std::hash<std::string>{}(title) % palette.size()];
 }
 
-void CYibuAlgorithm::render(PHLMONITOR monitor) {
+void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
     if (!m_parent || m_parent->space()->workspace()->m_monitor.lock() != monitor)
         return;
     controls();
@@ -315,17 +315,21 @@ void CYibuAlgorithm::render(PHLMONITOR monitor) {
         label(initial(name), box, COLOR_INK, 15, 700, true);
     };
     auto area = m_parent->space()->workArea();
-    if (m_enabled) {
-        rect({area.x, area.y, area.w, BAR * u}, COLOR_BAR);
-        rect({area.x, area.y + BAR * u - 1. / scale, area.w, 1. / scale}, COLOR_LINE);
-        if (!m_main.lock()) {
-            // Every task is pinned or none is open: say how to fill the main area.
+    // The empty desktop is wallpaper, not an overlay over unmanaged X11
+    // windows (splash screens, menus and native presentation surfaces).
+    if (background) {
+        if (m_enabled && !m_main.lock()) {
             auto box = m_mainBox;
             rect(box, COLOR_SLOT, 16 * u);
             label("No task in the main area", {box.x, box.y + box.h / 2. - 44 * u, box.w, 40 * u}, COLOR_TEXT, 22, 600, true);
             label("Open one with + Apps, or click a pinned task to bring it here", {box.x, box.y + box.h / 2. + 4 * u, box.w, 30 * u}, COLOR_MUTED, 15, 500,
                   true);
         }
+        return;
+    }
+    if (m_enabled) {
+        rect({area.x, area.y, area.w, BAR * u}, COLOR_BAR);
+        rect({area.x, area.y + BAR * u - 1. / scale, area.w, 1. / scale}, COLOR_LINE);
         for (int i = 0; i < 3; ++i) {
             auto box  = m_boxes[i];
             auto task = m_slots[i].lock();
