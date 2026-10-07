@@ -25,7 +25,15 @@ void CLogger::log(Hyprutils::CLI::eLogLevel level, const std::string_view& str) 
         SRollingLogFollow::get().addLog(str);
 
 #ifdef __ANDROID__
-    __android_log_print(ANDROID_LOG_DEBUG, "anhyprland", "%.*s", static_cast<int>(str.size()), str.data());
+    int priority = ANDROID_LOG_INFO;
+    switch (level) {
+        case Hyprutils::CLI::LOG_TRACE: priority = ANDROID_LOG_DEBUG; break;
+        case Hyprutils::CLI::LOG_WARN: priority = ANDROID_LOG_WARN; break;
+        case Hyprutils::CLI::LOG_ERR: priority = ANDROID_LOG_ERROR; break;
+        case Hyprutils::CLI::LOG_CRIT: priority = ANDROID_LOG_FATAL; break;
+        default: break;
+    }
+    __android_log_print(priority, "anhyprland", "%.*s", static_cast<int>(str.size()), str.data());
 #endif
     m_logger.log(level, str);
 }
