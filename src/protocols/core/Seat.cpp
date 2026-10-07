@@ -6,9 +6,12 @@
 #include "../../managers/SeatManager.hpp"
 #include "../../helpers/time/Time.hpp"
 #include "../../config/ConfigValue.hpp"
+#include "../../helpers/MiscFunctions.hpp"
 #include <algorithm>
 
 #include <fcntl.h>
+#include <cerrno>
+#include <unistd.h>
 
 constexpr const float WL_FIXED_EPSILON = 1.F / 256.F;
 
@@ -383,6 +386,29 @@ void CWLKeyboardResource::sendKeymap(SP<IKeyboard> keyboard) {
 
     const wl_keyboard_keymap_format format = keyboard ? WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 : WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP;
 
+#ifdef __ANDROID__
+    // The shared keymap is a write-sealed memfd. Older kernels (e.g. 4.19) reject
+    // read-only MAP_SHARED mappings of such files (EPERM), and GTK 3 and others map
+    // keymaps shared: they then silently keep their built-in US map, so keymaps from
+    // virtual keyboards (wtype, input tools) are never applied. Each client gets its
+    // own unsealed copy instead; it can only modify the copy it was given.
+    if (auto copy = allocateSHMFile(size); copy.isValid()) {
+        size_t written = 0;
+        while (written < size) {
+            // size includes the terminating NUL, which std::string's data() provides
+            const auto count = pwrite(copy.get(), keymap.data() + written, size - written, written);
+            if (count < 0 && errno == EINTR)
+                continue;
+            if (count <= 0)
+                break;
+            written += count;
+        }
+        if (written == size) {
+            m_resource->sendKeymap(format, copy.get(), size);
+            return;
+        }
+    }
+#endif
     m_resource->sendKeymap(format, fd.get(), size);
 }
 
