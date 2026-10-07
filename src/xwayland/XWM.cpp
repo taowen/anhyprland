@@ -1208,6 +1208,12 @@ void CXWM::associate(SP<CXWaylandSurface> surf, SP<CWLSurfaceResource> wlSurf) {
     readWindowData(surf);
 
     surf->m_events.resourceChange.emit();
+
+    // Xwayland may commit a buffer before association, and an override-redirect
+    // window gets no considerMap from MapNotify. A client that presents once
+    // (one native buffer) would otherwise never map.
+    if (surf->m_overrideRedirect)
+        surf->considerMap();
 }
 
 void CXWM::dissociate(SP<CXWaylandSurface> surf) {
