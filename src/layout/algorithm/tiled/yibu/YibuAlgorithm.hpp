@@ -61,13 +61,17 @@ namespace Layout::Tiled {
         bool                                                  m_taskMenu = false;
         std::unordered_map<std::string, SP<Render::ITexture>> m_textures;
         int                                                   m_hoverSlot = -1, m_promotedSlot = -1;
-        wl_event_source*                                      m_hoverTimer = nullptr;
+        wl_event_source*                                      m_hoverTimer                = nullptr;
+        wl_event_source*                                      m_controlsIdleTimer         = nullptr;
+        bool                                                  m_fullscreenControlsVisible = true;
+        uint32_t                                              m_pointerButtons            = 0;
         CHyprSignalListener                                   m_focus;
         void                                                  select(SP<ITarget>);
         void                                                  used(SP<ITarget>);
         void                                                  focusMain();
         int                                                   slot(SP<ITarget>) const;
         void                                                  controls();
+        void                                                  showFullscreenControls();
         double                                                unit() const;
         SP<Render::ITexture>                                  text(const std::string& label, const CHyprColor& color, int pixels, int weight, int maxWidth);
     };

@@ -38,6 +38,8 @@ CYibuAlgorithm::~CYibuAlgorithm() {
     m_focus.reset();
     if (m_hoverTimer)
         wl_event_source_remove(m_hoverTimer);
+    if (m_controlsIdleTimer)
+        wl_event_source_remove(m_controlsIdleTimer);
     for (auto& weak : m_tasks)
         if (auto target = weak.lock(); target && target->window()) {
             target->window()->setInputBlocked(Desktop::View::FOCUS_BLOCK_YIBU_INACTIVE, false);
@@ -90,6 +92,8 @@ void CYibuAlgorithm::removeTarget(SP<ITarget> target) {
             s.reset();
     std::erase_if(m_tasks, [&](auto& t) { return !t || t.lock() == target; });
     std::erase_if(m_recent, [&](auto& t) { return !t || t.lock() == target; });
+    // Automatic replacement must not consume a pinned slot. In particular,
+    // Apps closes before the launched application's window is ready.
     if (m_main.lock() == target)
         m_main = getNextCandidate(target);
     recalculate();
@@ -115,10 +119,9 @@ std::optional<Vector2D> CYibuAlgorithm::predictSizeForNewTarget() {
 // Toolbar, slot header and control sizes are in toolbar units (1/100 of the
 // host-provided toolbar reference), so the chrome follows the display density.
 static constexpr double BAR = 56., HEADER = 34.;
-static const CHyprColor COLOR_BAR{0.075F, 0.086F, 0.106F, 1.F}, COLOR_LINE{1.F, 1.F, 1.F, 0.07F}, COLOR_BUTTON{0.16F, 0.18F, 0.22F, 1.F},
-    COLOR_HOVER{0.23F, 0.26F, 0.31F, 1.F}, COLOR_PRIMARY{0.43F, 0.87F, 0.75F, 1.F}, COLOR_TEXT{0.92F, 0.95F, 0.98F, 1.F}, COLOR_MUTED{0.62F, 0.68F, 0.75F, 1.F},
-    COLOR_INK{0.03F, 0.06F, 0.09F, 1.F}, COLOR_ACTIVE{0.96F, 0.97F, 0.98F, 1.F}, COLOR_SLOT{0.105F, 0.12F, 0.145F, 1.F}, COLOR_EMPTY_LINE{0.43F, 0.87F, 0.75F, 0.35F},
-    COLOR_MENU{0.09F, 0.1F, 0.125F, 0.98F};
+static const CHyprColor COLOR_BAR{0.075F, 0.086F, 0.106F, 1.F}, COLOR_LINE{1.F, 1.F, 1.F, 0.07F}, COLOR_BUTTON{0.16F, 0.18F, 0.22F, 1.F}, COLOR_HOVER{0.23F, 0.26F, 0.31F, 1.F},
+    COLOR_PRIMARY{0.43F, 0.87F, 0.75F, 1.F}, COLOR_TEXT{0.92F, 0.95F, 0.98F, 1.F}, COLOR_MUTED{0.62F, 0.68F, 0.75F, 1.F}, COLOR_INK{0.03F, 0.06F, 0.09F, 1.F},
+    COLOR_ACTIVE{0.96F, 0.97F, 0.98F, 1.F}, COLOR_SLOT{0.105F, 0.12F, 0.145F, 1.F}, COLOR_EMPTY_LINE{0.43F, 0.87F, 0.75F, 0.35F}, COLOR_MENU{0.09F, 0.1F, 0.125F, 0.98F};
 
 double CYibuAlgorithm::unit() const {
     auto monitor = m_parent ? m_parent->space()->workspace()->m_monitor.lock() : nullptr;
@@ -181,7 +184,7 @@ void CYibuAlgorithm::focusMain() {
     if (focused == main->window())
         return;
     if (focused && !std::ranges::any_of(m_tasks, [&](const auto& t) { return t.lock() && t.lock()->window() == focused; }))
-        return; // a popup, dialog or other window outside the task slots keeps focus
+        return;         // a popup, dialog or other window outside the task slots keeps focus
     m_arranging = true; // the focus listener must not re-enter select()/recalculate()
     Desktop::focusState()->fullWindowFocus(main->window(), Desktop::FOCUS_REASON_SWITCH_TO_WINDOW_SOFT);
     m_arranging = false;
@@ -189,14 +192,18 @@ void CYibuAlgorithm::focusMain() {
 
 void CYibuAlgorithm::controls() {
     m_controls.clear();
-    m_menuBox = {};
+    m_menuBox   = {};
     auto   area = m_parent->space()->workArea();
     double u    = unit();
     auto   add  = [&](CBox box, std::string label, int action, int target, eControlStyle style, bool active = false, std::string app = "") {
         m_controls.push_back({box, std::move(label), std::move(app), action, target, style, active});
     };
+    auto main     = m_main.lock();
+    bool canClose = main && main->window();
     if (!m_enabled) {
-        add({area.x + area.w - 170 * u, area.y + 10 * u, 160 * u, 40 * u}, "Back to Yibu", 1, 0, CONTROL_FLOAT);
+        double right = area.x + area.w - 10 * u;
+        if (m_fullscreenControlsVisible)
+            add({right - 40 * u, area.y + 10 * u, 40 * u, 40 * u}, "", 1, 0, CONTROL_FLOAT);
         return;
     }
     std::vector<SP<ITarget>> live;
@@ -204,16 +211,20 @@ void CYibuAlgorithm::controls() {
         if (auto task = weak.lock(); task && task->window())
             live.push_back(task);
     double y = area.y + 8 * u, h = 40 * u, right = area.x + area.w - 10 * u;
-    CBox   full{right - 128 * u, y, 128 * u, h};
-    CBox   tasks{full.x - 108 * u, y, 98 * u, h};
-    CBox   apps{tasks.x - 104 * u, y, 94 * u, h};
+    if (canClose) {
+        add({right - 40 * u, y, 40 * u, h}, "", 8, main->window()->metadata().stableID(), CONTROL_CLOSE);
+        right -= 48 * u;
+        add({right - 40 * u, y, 40 * u, h}, "", 0, 0, CONTROL_BUTTON);
+        right -= 48 * u;
+    }
+    CBox tasks{right - 98 * u, y, 98 * u, h};
+    CBox apps{tasks.x - 104 * u, y, 94 * u, h};
     add({area.x + 10 * u, y, 112 * u, h}, m_left ? "Sidebar ›" : "‹ Sidebar", 5, 0, CONTROL_BUTTON);
     add(apps, "+ Apps", 6, 0, CONTROL_PRIMARY);
     add(tasks, "Tasks " + std::to_string(live.size()), 7, 0, CONTROL_BUTTON, m_taskMenu);
-    add(full, "Full screen", 0, 0, CONTROL_BUTTON);
     // Running tasks as a strip of chips; those that do not fit stay in the Tasks panel.
     double x0 = area.x + 134 * u, x1 = apps.x - 14 * u;
-    double w  = live.empty() ? 0. : std::clamp((x1 - x0) / live.size(), 120. * u, 210. * u);
+    double w = live.empty() ? 0. : std::clamp((x1 - x0) / live.size(), 120. * u, 210. * u);
     for (size_t i = 0; i < live.size() && x0 + (i + 1) * w <= x1 + 1; ++i)
         add({x0 + i * w, y, w - 8 * u, h}, live[i]->window()->metadata().title(), 4, live[i]->window()->metadata().stableID(), CONTROL_TASK, live[i] == m_main.lock(),
             live[i]->window()->metadata().appID());
@@ -221,7 +232,7 @@ void CYibuAlgorithm::controls() {
         if (m_slots[i].expired())
             continue;
         auto box = m_boxes[i];
-        add({box.x + box.w - 32 * u, box.y + 4 * u, 28 * u, 26 * u}, "×", 3, i, CONTROL_CLOSE);
+        add({box.x + box.w - 64 * u, box.y + 4 * u, 60 * u, 26 * u}, "Unpin", 3, i, CONTROL_BUTTON);
     }
     if (!m_taskMenu)
         return;
@@ -314,6 +325,30 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
         rect(box, badgeColor(name), box.h / 2.);
         label(initial(name), box, COLOR_INK, 15, 700, true);
     };
+    // Simple compositor-native icons: no icon font or theme dependency.
+    auto icon = [&](int action, CBox box) {
+        if (action == 8) {
+            label("×", box, COLOR_TEXT, 26, 400, true);
+            return;
+        }
+        double x = box.x + (box.w - 20 * u) / 2., y = box.y + (box.h - 20 * u) / 2.;
+        double size = 20 * u, stroke = 2 * u;
+        if (action == 0) {
+            for (int row = 0; row < 2; ++row)
+                for (int col = 0; col < 2; ++col) {
+                    rect({x + col * (size - 7 * u), y + row * (size - stroke), 7 * u, stroke}, COLOR_TEXT);
+                    rect({x + col * (size - stroke), y + row * (size - 7 * u), stroke, 7 * u}, COLOR_TEXT);
+                }
+        } else {
+            rect({x, y, size, stroke}, COLOR_TEXT);
+            rect({x, y + size - stroke, size, stroke}, COLOR_TEXT);
+            rect({x, y, stroke, size}, COLOR_TEXT);
+            rect({x + size - stroke, y, stroke, size}, COLOR_TEXT);
+            rect({x + 12 * u, y, stroke, size}, COLOR_TEXT);
+            for (int row = 1; row < 3; ++row)
+                rect({x + 12 * u, y + row * size / 3., 8 * u, stroke}, COLOR_TEXT);
+        }
+    };
     auto area = m_parent->space()->workArea();
     // The empty desktop is wallpaper, not an overlay over unmanaged X11
     // windows (splash screens, menus and native presentation surfaces).
@@ -322,8 +357,7 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
             auto box = m_mainBox;
             rect(box, COLOR_SLOT, 16 * u);
             label("No task in the main area", {box.x, box.y + box.h / 2. - 44 * u, box.w, 40 * u}, COLOR_TEXT, 22, 600, true);
-            label("Open one with + Apps, or click a pinned task to bring it here", {box.x, box.y + box.h / 2. + 4 * u, box.w, 30 * u}, COLOR_MUTED, 15, 500,
-                  true);
+            label("Open one with + Apps, or click a pinned task to bring it here", {box.x, box.y + box.h / 2. + 4 * u, box.w, 30 * u}, COLOR_MUTED, 15, 500, true);
         }
         return;
     }
@@ -350,7 +384,7 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
             rect({box.x, box.y, box.w, HEADER * u}, COLOR_BUTTON, 10 * u);
             auto title = task->window()->metadata().title();
             badge(task->window()->metadata().appID(), title, {box.x + 6 * u, box.y + 5 * u, 24 * u, 24 * u});
-            label(title, {box.x + 30 * u, box.y, box.w - 66 * u, HEADER * u}, COLOR_TEXT, 13, 500, false, 8);
+            label(title, {box.x + 30 * u, box.y, box.w - 98 * u, HEADER * u}, COLOR_TEXT, 13, 500, false, 8);
         }
         if (m_taskMenu) {
             rect({m_menuBox.x - 1, m_menuBox.y - 1, m_menuBox.w + 2, m_menuBox.h + 2}, COLOR_LINE, 17 * u);
@@ -377,15 +411,18 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
             }
             case CONTROL_CLOSE:
                 rect(box, hover || pressed ? CHyprColor{0.85F, 0.33F, 0.33F, 1.F} : COLOR_HOVER, box.h / 2.);
-                label(control.label, box, COLOR_TEXT, 16, 600, true);
+                icon(control.action, box);
                 break;
             case CONTROL_FLOAT:
                 rect(box, hover ? CHyprColor{0.F, 0.F, 0.F, 0.85F} : CHyprColor{0.F, 0.F, 0.F, 0.6F}, box.h / 2.);
-                label(control.label, box, COLOR_TEXT, 14, 600, true);
+                icon(control.action, box);
                 break;
             case CONTROL_BUTTON:
                 rect(box, control.active || pressed ? COLOR_HOVER : hover ? CHyprColor{0.2F, 0.22F, 0.27F, 1.F} : COLOR_BUTTON, box.h / 2.);
-                label(control.label, box, COLOR_TEXT, 14, 600, true);
+                if (control.action == 0)
+                    icon(control.action, box);
+                else
+                    label(control.label, box, COLOR_TEXT, 14, 600, true);
                 break;
         }
     }
@@ -403,9 +440,23 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
         recalculate();
         return;
     }
+    if (action == 8) {
+        // Address the window captured on pointer-down, not whichever window
+        // happens to have focus on release. Never force-kill an application.
+        for (auto& weak : m_tasks)
+            if (auto task = weak.lock(); task && task->window() && task->window()->metadata().stableID() == static_cast<uint64_t>(target)) {
+                task->window()->sendClose();
+                break;
+            }
+        return;
+    }
     m_taskMenu = false;
     if (action == 0 || action == 1) {
         m_enabled = action == 1;
+        if (!m_enabled)
+            showFullscreenControls();
+        else if (m_controlsIdleTimer)
+            wl_event_source_timer_update(m_controlsIdleTimer, 0);
         if (toolbarPixels > 0)
             m_toolbarPixels = toolbarPixels;
     } else if (action == 5)
@@ -430,12 +481,48 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
     if (auto task = m_main.lock())
         Desktop::focusState()->fullWindowFocus(task->window(), Desktop::FOCUS_REASON_CLICK);
 }
+void CYibuAlgorithm::showFullscreenControls() {
+    if (m_enabled)
+        return;
+    if (!m_fullscreenControlsVisible) {
+        m_fullscreenControlsVisible = true;
+        controls();
+        if (auto monitor = m_parent->space()->workspace()->m_monitor.lock())
+            g_pHyprRenderer->damageMonitor(monitor);
+    }
+    if (!m_controlsIdleTimer)
+        m_controlsIdleTimer = wl_event_loop_add_timer(
+            g_pCompositor->m_wlEventLoop,
+            [](void* data) {
+                auto self = static_cast<CYibuAlgorithm*>(data);
+                if (self->m_enabled || self->m_pointerButtons || self->m_pressedControl || (PROTO::data && PROTO::data->dndActive()))
+                    return 0;
+                self->m_fullscreenControlsVisible = false;
+                self->m_hoverControl              = -1;
+                self->controls();
+                if (auto monitor = self->m_parent->space()->workspace()->m_monitor.lock())
+                    g_pHyprRenderer->damageMonitor(monitor);
+                return 0;
+            },
+            this);
+    if (m_controlsIdleTimer)
+        wl_event_source_timer_update(m_controlsIdleTimer, 3000);
+}
+
 bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) {
     if (!m_parent)
         return false;
     auto monitor = m_parent->space()->workspace()->m_monitor.lock();
     if (!monitor)
         return false;
+    if (button >= 0x110 && button < 0x130) {
+        uint32_t bit = 1U << (button - 0x110);
+        if (pressed)
+            m_pointerButtons |= bit;
+        else
+            m_pointerButtons &= ~bit;
+    }
+    showFullscreenControls();
     Vector2D point = Vector2D{x, y} / monitor->m_scale + monitor->m_position;
     if (!(PROTO::data && PROTO::data->dndActive())) {
         auto control = std::ranges::find_if(m_controls, [&](const auto& item) { return item.box.containsPoint(point); });
@@ -451,7 +538,7 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
         if (button == 0x110 && !pressed && m_pressedControl) {
             auto previous = *m_pressedControl;
             m_pressedControl.reset();
-            if (previous.box.containsPoint(point))
+            if (control != m_controls.end() && previous.box.containsPoint(point) && previous.action == control->action && previous.target == control->target)
                 action(previous.action, previous.target, 0);
             return true;
         }

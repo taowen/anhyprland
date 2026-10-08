@@ -234,7 +234,7 @@ SP<ITarget> CAlgorithm::getNextCandidate(SP<ITarget> old) {
     if (old->floating() || *FOCUSONCLOSE == 2) {
         // use window history to determine best target
         for (const auto& w : Desktop::History::windowTracker()->fullHistory() | std::views::reverse) {
-            if (!w->m_workspace || w->m_workspace->space() != m_space || !w->layoutTarget() || !w->layoutTarget()->space())
+            if (!w->m_workspace || w->m_workspace->space() != m_space || !w->layoutTarget() || !w->layoutTarget()->space() || !w->acceptsInput())
                 continue;
 
             return w->layoutTarget();
@@ -250,11 +250,13 @@ SP<ITarget> CAlgorithm::getNextCandidate(SP<ITarget> old) {
         // no candidate, fall back
     }
 
-    // fallback: try to focus anything
-    if (!m_tiledTargets.empty())
-        return m_tiledTargets.back().lock();
-    if (!m_floatingTargets.empty())
-        return m_floatingTargets.back().lock();
+    // Automatic focus must respect layout input blocking (e.g. task previews).
+    for (auto& weak : m_tiledTargets | std::views::reverse)
+        if (auto target = weak.lock(); target && target->window() && target->window()->acceptsInput())
+            return target;
+    for (auto& weak : m_floatingTargets | std::views::reverse)
+        if (auto target = weak.lock(); target && target->window() && target->window()->acceptsInput())
+            return target;
 
     // god damn it, maybe empty?
     return nullptr;
