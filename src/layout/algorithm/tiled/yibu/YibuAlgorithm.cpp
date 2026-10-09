@@ -461,8 +461,17 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
     if (PROTO::data && PROTO::data->dndActive())
         return;
     if (action == 6) {
-        Config::Supplementary::executor()->spawn("python3 /usr/lib/arlinux/guest/yibu-launcher.py");
-        return;
+        SP<ITarget> launcher;
+        for (auto& weak : m_tasks)
+            if (auto task = weak.lock(); task && task->window() && task->window()->metadata().appID() == "org.arlinux.Applications") {
+                launcher = task;
+                break;
+            }
+        if (!launcher) {
+            Config::Supplementary::executor()->spawn("python3 /usr/lib/arlinux/guest/yibu-launcher.py");
+            return;
+        }
+        select(launcher);
     }
     if (action == 7) {
         m_taskMenu = !m_taskMenu;
