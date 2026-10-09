@@ -9,6 +9,7 @@
 #include "../../../../helpers/MiscFunctions.hpp"
 #include "../../../../Compositor.hpp"
 #include "../../../../protocols/core/DataDevice.hpp"
+#include "../../../../managers/fullscreen/FullscreenController.hpp"
 #include "../../../../render/Renderer.hpp"
 #include <algorithm>
 #include <cmath>
@@ -287,8 +288,12 @@ static CHyprColor badgeColor(const std::string& title) {
     return palette[std::hash<std::string>{}(title) % palette.size()];
 }
 
+bool CYibuAlgorithm::coveredByFullscreen() const {
+    return m_parent && Fullscreen::controller()->hasFullscreen(m_parent->space()->workspace(), true);
+}
+
 void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
-    if (!m_parent || m_parent->space()->workspace()->m_monitor.lock() != monitor)
+    if (!m_parent || m_parent->space()->workspace()->m_monitor.lock() != monitor || coveredByFullscreen())
         return;
     controls();
     double scale = monitor->m_scale, u = unit();
@@ -522,6 +527,15 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
         else
             m_pointerButtons &= ~bit;
     }
+    // Native application fullscreen covers the entire Yibu chrome. Hidden
+    // controls and task slots must not intercept input intended for that app.
+    if (coveredByFullscreen()) {
+        m_pressedControl.reset();
+        m_pressedSlot = m_hoverControl = m_hoverSlot = m_promotedSlot = -1;
+        if (m_hoverTimer)
+            wl_event_source_timer_update(m_hoverTimer, 0);
+        return false;
+    }
     showFullscreenControls();
     Vector2D point = Vector2D{x, y} / monitor->m_scale + monitor->m_position;
     if (!(PROTO::data && PROTO::data->dndActive())) {
@@ -562,7 +576,7 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
                     g_pCompositor->m_wlEventLoop,
                     [](void* data) {
                         auto self = static_cast<CYibuAlgorithm*>(data);
-                        if (PROTO::data->dndActive() && self->m_hoverSlot >= 0) {
+                        if (!self->coveredByFullscreen() && PROTO::data->dndActive() && self->m_hoverSlot >= 0) {
                             self->select(self->m_slots[self->m_hoverSlot].lock());
                             self->m_promotedSlot = self->m_hoverSlot;
                             self->m_hoverSlot    = -1;

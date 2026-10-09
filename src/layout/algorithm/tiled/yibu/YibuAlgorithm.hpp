@@ -72,6 +72,7 @@ namespace Layout::Tiled {
         int                                                   slot(SP<ITarget>) const;
         void                                                  controls();
         void                                                  showFullscreenControls();
+        bool                                                  coveredByFullscreen() const;
         double                                                unit() const;
         SP<Render::ITexture>                                  text(const std::string& label, const CHyprColor& color, int pixels, int weight, int maxWidth);
     };
