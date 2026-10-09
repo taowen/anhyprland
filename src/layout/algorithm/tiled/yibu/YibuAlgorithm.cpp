@@ -16,6 +16,7 @@
 #include <cctype>
 #include <format>
 #include <ranges>
+#include <cairo/cairo.h>
 #include "../../../../render/Texture.hpp"
 #include "../../../../render/pass/RectPassElement.hpp"
 #include "../../../../render/pass/TexPassElement.hpp"
@@ -333,7 +334,30 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
     // Simple compositor-native icons: no icon font or theme dependency.
     auto icon = [&](int action, CBox box) {
         if (action == 8) {
-            label("×", box, COLOR_TEXT, 26, 400, true);
+            // Draw around the button centre, not a font's baseline and bearings.
+            int   size    = std::max(1, sc<int>(std::round(24 * u * scale)));
+            auto  key     = std::format("close-icon|{}", size);
+            auto& texture = m_textures[key];
+            if (!texture) {
+                std::unique_ptr<cairo_surface_t, decltype(&cairo_surface_destroy)> surface(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size, size), cairo_surface_destroy);
+                std::unique_ptr<cairo_t, decltype(&cairo_destroy)>                 context(cairo_create(surface.get()), cairo_destroy);
+                cairo_scale(context.get(), size / 24., size / 24.);
+                cairo_set_source_rgba(context.get(), COLOR_TEXT.r, COLOR_TEXT.g, COLOR_TEXT.b, COLOR_TEXT.a);
+                cairo_set_line_width(context.get(), 2.);
+                cairo_set_line_cap(context.get(), CAIRO_LINE_CAP_ROUND);
+                cairo_move_to(context.get(), 5., 5.);
+                cairo_line_to(context.get(), 19., 19.);
+                cairo_move_to(context.get(), 19., 5.);
+                cairo_line_to(context.get(), 5., 19.);
+                cairo_stroke(context.get());
+                cairo_surface_flush(surface.get());
+                texture = g_pHyprRenderer->createTexture(surface.get());
+            }
+            auto                         bounds = pixels(box);
+            CTexPassElement::SRenderData data;
+            data.tex = texture;
+            data.box = {std::round(bounds.x + (bounds.w - size) / 2.), std::round(bounds.y + (bounds.h - size) / 2.), sc<double>(size), sc<double>(size)};
+            g_pHyprRenderer->m_renderPass.add(makeUnique<CTexPassElement>(data));
             return;
         }
         double x = box.x + (box.w - 20 * u) / 2., y = box.y + (box.h - 20 * u) / 2.;
@@ -603,5 +627,5 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
             return true;
         }
     }
-    return false;
+    return hit >= 0;
 }

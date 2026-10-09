@@ -179,6 +179,30 @@ extern "C" int anhyprland_axis(float dx, float dy) {
             output->axis(dx, dy);
     });
 }
+extern "C" int anhyprland_touch(int id, int action, float x, float y) {
+    if (id < 0 || id >= 32 || action < 0 || action > 3)
+        return -EINVAL;
+    return enqueue([=] {
+        // Yibu's controls are compositor chrome, not client surfaces. Capture
+        // contacts starting there; never repick a client during its swipe.
+        static uint32_t chromeTouches = 0;
+        const uint32_t  bit           = 1U << id;
+        auto            layout        = Layout::Tiled::CYibuAlgorithm::active();
+        if (action == 0 && layout && layout->pointer(x, y, 0, false)) {
+            layout->pointer(x, y, 0x110, true);
+            chromeTouches |= bit;
+        }
+        if (chromeTouches & bit) {
+            if (layout && action != 0)
+                layout->pointer(action == 3 ? -1 : x, action == 3 ? -1 : y, action == 2 ? 0 : 0x110, false);
+            if (action == 1 || action == 3)
+                chromeTouches &= ~bit;
+            return;
+        }
+        if (auto output = backend())
+            output->touch(id, action, x, y);
+    });
+}
 extern "C" int anhyprland_key(uint32_t evdev, int pressed) {
     return enqueue([=] {
         if (auto output = backend())

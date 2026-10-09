@@ -19,6 +19,8 @@ int  anhyprland_pointer(float x, float y, uint32_t button, int pressed);
 int  anhyprland_cursor_shape(void);
 void anhyprland_report_cursor_shape(uint32_t shape);
 int  anhyprland_axis(float dx, float dy);
+// Touch contacts in output pixels: 0=down, 1=up, 2=move, 3=cancel.
+int  anhyprland_touch(int id, int action, float x, float y);
 int  anhyprland_key(uint32_t evdev, int pressed);
 // Type a Unicode character available in the active layout (base or Shift level).
 int anhyprland_unicode(uint32_t codepoint);

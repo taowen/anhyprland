@@ -37,6 +37,13 @@ namespace Aquamarine {
         const std::string m_name = "Android pointer";
     };
 
+    class CAndroidTouch : public ITouch {
+      public:
+        const std::string& getName() override;
+      private:
+        const std::string m_name = "Android touchscreen";
+    };
+
     // Every method runs on the compositor thread. The embedding API queues
     // Android UI events onto that thread before calling this backend.
     class CAndroidBackend : public IBackendImplementation {
@@ -64,6 +71,7 @@ namespace Aquamarine {
         bool frameScheduled() const;
         void pointer(float x, float y, uint32_t button, bool pressed);
         void axis(float dx, float dy);
+        void touch(int32_t id, int action, float x, float y);
         void key(uint32_t evdev, bool pressed);
 
         Hyprutils::Memory::CWeakPointer<CAndroidBackend> self;
@@ -75,6 +83,7 @@ namespace Aquamarine {
         Hyprutils::Memory::CSharedPointer<CAndroidOutput> m_output;
         Hyprutils::Memory::CSharedPointer<CAndroidKeyboard> m_keyboard;
         Hyprutils::Memory::CSharedPointer<CAndroidPointer> m_pointer;
+        Hyprutils::Memory::CSharedPointer<CAndroidTouch> m_touch;
         Hyprutils::Memory::CSharedPointer<IAllocator> m_allocator;
         Hyprutils::OS::CFileDescriptor m_timer;
         ANativeWindow* m_window = nullptr;

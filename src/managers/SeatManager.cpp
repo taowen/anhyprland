@@ -600,6 +600,11 @@ void CSeatManager::sendTouchCancel() {
             t->sendCancel();
         }
     }
+    m_listeners.touchSurfaceDestroy.reset();
+    m_state.touchFocusResource.reset();
+    m_state.touchFocus.reset();
+    m_touchLocks = 0;
+    m_events.touchFocusChange.emit();
 }
 
 void CSeatManager::sendTouchShape(int32_t id, const Vector2D& shape) {

@@ -119,6 +119,7 @@ bool CAndroidOutput::pendingPageFlip() { return false; }
 bool CAndroidOutput::pendingIdleFrame() { return m_backend->frameScheduled(); }
 const std::string& CAndroidKeyboard::getName() { return m_name; }
 const std::string& CAndroidPointer::getName() { return m_name; }
+const std::string& CAndroidTouch::getName() { return m_name; }
 
 CAndroidBackend::CAndroidBackend(CWeakPointer<CBackend> backend, ANativeWindow* window, int width, int height) :
     m_backend(backend), m_window(window), m_width(width), m_height(height) {
@@ -156,8 +157,10 @@ bool CAndroidBackend::dispatchEvents() {
     if (!m_keyboard) {
         m_keyboard = makeShared<CAndroidKeyboard>();
         m_pointer = makeShared<CAndroidPointer>();
+        m_touch = makeShared<CAndroidTouch>();
         m_backend->events.newKeyboard.emit(m_keyboard);
         m_backend->events.newPointer.emit(m_pointer);
+        m_backend->events.newTouch.emit(m_touch);
     }
     if (m_window && m_output) {
         m_lastFrame = std::chrono::steady_clock::now();
@@ -242,6 +245,21 @@ void CAndroidBackend::axis(float dx, float dy) {
     if (dy)
         m_pointer->events.axis.emit(IPointer::SAxisEvent{.timeMs = timeMs(), .axis = IPointer::AQ_POINTER_AXIS_VERTICAL, .delta = dy});
     m_pointer->events.frame.emit();
+}
+
+void CAndroidBackend::touch(int32_t id, int action, float x, float y) {
+    if (!m_touch || m_width <= 0 || m_height <= 0 || !std::isfinite(x) || !std::isfinite(y))
+        return;
+    const auto now = timeMs();
+    const Vector2D pos = {x / m_width, y / m_height};
+    switch (action) {
+        case 0: m_touch->events.down.emit(ITouch::SDownEvent{.timeMs = now, .touchID = id, .pos = pos}); break;
+        case 1: m_touch->events.up.emit(ITouch::SUpEvent{.timeMs = now, .touchID = id}); break;
+        case 2: m_touch->events.move.emit(ITouch::SMotionEvent{.timeMs = now, .touchID = id, .pos = pos}); break;
+        case 3: m_touch->events.cancel.emit(ITouch::SCancelEvent{.timeMs = now, .touchID = id}); break;
+        default: return;
+    }
+    m_touch->events.frame.emit();
 }
 
 void CAndroidBackend::key(uint32_t evdev, bool pressed) {
