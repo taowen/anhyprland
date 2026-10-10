@@ -362,6 +362,19 @@ void CXWM::readProp(SP<CXWaylandSurface> XSURF, uint32_t atom, xcb_get_property_
 }
 
 void CXWM::handlePropertyNotify(xcb_property_notify_event_t* e) {
+    if (e->window == m_wmWindow && e->atom == HYPRATOMS["WM_TAKE_FOCUS"]) {
+        // ICCCM requires a server timestamp, not CurrentTime, for WM_TAKE_FOCUS.
+        // A property round trip also covers focus changes initiated by Wayland
+        // clients, which have no X11 input-event timestamp to forward.
+        if (const auto SURF = m_focusedSurface.lock(); SURF && !SURF->m_overrideRedirect) {
+            xcb_client_message_data_t msg = {{0}};
+            msg.data32[0]                 = HYPRATOMS["WM_TAKE_FOCUS"];
+            msg.data32[1]                 = e->time;
+            sendWMMessage(SURF, &msg, XCB_EVENT_MASK_NO_EVENT);
+        }
+        return;
+    }
+
     const auto XSURF = windowForXID(e->window);
 
     if (!XSURF) {
@@ -566,15 +579,12 @@ void CXWM::focusWindow(SP<CXWaylandSurface> surf) {
     if (surf->m_overrideRedirect)
         return;
 
-    xcb_client_message_data_t msg = {{0}};
-    msg.data32[0]                 = HYPRATOMS["WM_TAKE_FOCUS"];
-    msg.data32[1]                 = XCB_TIME_CURRENT_TIME;
+    // Request a fresh timestamp asynchronously. Only the currently desired
+    // surface receives the reply, so a queued request cannot focus an old one.
+    const uint8_t timestampRequest = 0;
+    xcb_change_property(getConnection(), XCB_PROP_MODE_REPLACE, m_wmWindow, HYPRATOMS["WM_TAKE_FOCUS"], XCB_ATOM_INTEGER, 8, 1, &timestampRequest);
 
-    if (surf->m_hints && !surf->m_hints->input)
-        sendWMMessage(surf, &msg, XCB_EVENT_MASK_NO_EVENT);
-    else {
-        sendWMMessage(surf, &msg, XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT);
-
+    if (!surf->m_hints || surf->m_hints->input) {
         xcb_void_cookie_t cookie = xcb_set_input_focus(getConnection(), XCB_INPUT_FOCUS_POINTER_ROOT, surf->m_xID, XCB_CURRENT_TIME);
         m_lastFocusSeq           = cookie.sequence;
     }
@@ -1071,7 +1081,9 @@ void CXWM::setActiveWindow(xcb_window_t window) {
 void CXWM::createWMWindow() {
     constexpr const char* wmName = "Hyprland :D";
     m_wmWindow                   = xcb_generate_id(getConnection());
-    xcb_create_window(getConnection(), XCB_COPY_FROM_PARENT, m_wmWindow, m_screen->root, 0, 0, 10, 10, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, m_screen->root_visual, 0, nullptr);
+    const uint32_t eventMask     = XCB_EVENT_MASK_PROPERTY_CHANGE;
+    xcb_create_window(getConnection(), XCB_COPY_FROM_PARENT, m_wmWindow, m_screen->root, 0, 0, 10, 10, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, m_screen->root_visual, XCB_CW_EVENT_MASK,
+                      &eventMask);
     xcb_change_property(getConnection(), XCB_PROP_MODE_REPLACE, m_wmWindow, HYPRATOMS["_NET_WM_NAME"], HYPRATOMS["UTF8_STRING"],
                         8, // format
                         strlen(wmName), wmName);
