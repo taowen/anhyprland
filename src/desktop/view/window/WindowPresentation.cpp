@@ -192,19 +192,23 @@ const PHLANIMVAR<float>& CWindowPresentation::alpha(eWindowAlpha type) const {
 }
 
 float CWindowPresentation::alphaValue(eWindowAlpha type) const {
+    if (type == WINDOW_ALPHA_LAYOUT && !m_window.layoutOwnerActive())
+        return 0.F;
     return alpha(type)->value();
 }
 
 float CWindowPresentation::alphaGoal(eWindowAlpha type) const {
+    if (type == WINDOW_ALPHA_LAYOUT && !m_window.layoutOwnerActive())
+        return 0.F;
     return alpha(type)->goal();
 }
 
 float CWindowPresentation::alphaTotal() const {
-    return m_alpha.getTotal();
+    return m_window.layoutOwnerActive() ? m_alpha.getTotal() : 0.F;
 }
 
 float CWindowPresentation::alphaTotalGoal() const {
-    return m_alpha.getTotalGoal();
+    return m_window.layoutOwnerActive() ? m_alpha.getTotalGoal() : 0.F;
 }
 
 int CWindowPresentation::borderSize() const {

@@ -100,6 +100,9 @@ void CFocusState::rawWindowFocus(PHLWINDOW pWindow, eFocusReason reason, SP<CWLS
     static auto PFOLLOWMOUSE        = CConfigValue<Config::INTEGER>("input:follow_mouse");
     static auto PSPECIALFALLTHROUGH = CConfigValue<Config::INTEGER>("input:special_fallthrough");
 
+    if (pWindow && !pWindow->layoutOwnerActive())
+        return;
+
     if (pWindow == m_focusWindow && surface == m_focusSurface && m_focusSurface)
         return;
 

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <ranges>
+#include <unordered_set>
 #include <utility>
 #include <hyprutils/animation/AnimatedVariable.hpp>
 
@@ -227,7 +228,21 @@ bool CWindow::mapped() const {
 }
 
 bool CWindow::focusAvailable() const {
-    return !isHidden();
+    return !isHidden() && layoutOwnerActive();
+}
+
+bool CWindow::layoutOwnerActive() const {
+    // Transient tool/dialog windows belong to their owner's task. They must
+    // not cover or accept input over another task (including pinned previews).
+    auto owner = m_backend->parent();
+    if (!owner)
+        return true;
+    std::unordered_set<const CWindow*> visited{this};
+    for (; owner; owner = owner->backend().parent()) {
+        if (!visited.insert(owner.get()).second || owner->isInputBlockedReasonAnyOf(FOCUS_BLOCK_YIBU_INACTIVE))
+            return false;
+    }
+    return true;
 }
 
 std::optional<CBox> CWindow::logicalBox() const {

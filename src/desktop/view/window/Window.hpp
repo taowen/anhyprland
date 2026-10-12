@@ -145,6 +145,7 @@ namespace Desktop::View {
         virtual eViewType                                         type() const override;
         virtual bool                                              mapped() const override;
         virtual bool                                              focusAvailable() const override;
+        bool                                                      layoutOwnerActive() const;
         virtual std::optional<CBox>                               logicalBox() const override;
         virtual bool                                              desktopComponent() const override;
         virtual std::optional<CBox>                               surfaceLogicalBox() const override;
