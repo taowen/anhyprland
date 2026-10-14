@@ -37,6 +37,7 @@
 #include "../layout/LayoutManager.hpp"
 #include "../layout/space/Space.hpp"
 #include "../layout/algorithm/Algorithm.hpp"
+#include "../layout/algorithm/tiled/yibu/YibuAlgorithm.hpp"
 #include "../i18n/Engine.hpp"
 #include "../helpers/cm/ColorManagement.hpp"
 #include "../state/MonitorState.hpp"
@@ -1796,7 +1797,8 @@ uint32_t CMonitor::isSolitaryBlocked(bool full) {
             return reasons;
     }
 
-    if (!m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY].empty()) {
+    const auto yibu = Layout::Tiled::CYibuAlgorithm::active();
+    if (!m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY].empty() || (yibu && yibu->hasFullscreenControls(m_self.lock()))) {
         reasons |= SC_OVERLAYS;
         if (!full)
             return reasons;

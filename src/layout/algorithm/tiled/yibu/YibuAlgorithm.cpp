@@ -202,7 +202,7 @@ void CYibuAlgorithm::controls() {
     };
     auto main     = m_main.lock();
     bool canClose = main && main->window();
-    if (!m_enabled) {
+    if (!m_enabled || coveredByFullscreen()) {
         double right = area.x + area.w - 10 * u;
         if (m_fullscreenControlsVisible)
             add({right - 40 * u, area.y + 10 * u, 40 * u, 40 * u}, "", 1, 0, CONTROL_FLOAT);
@@ -293,8 +293,12 @@ bool CYibuAlgorithm::coveredByFullscreen() const {
     return m_parent && Fullscreen::controller()->hasFullscreen(m_parent->space()->workspace(), true);
 }
 
+bool CYibuAlgorithm::hasFullscreenControls(PHLMONITOR monitor) const {
+    return m_parent && m_parent->space()->workspace()->m_monitor.lock() == monitor && m_fullscreenControlsVisible && (!m_enabled || coveredByFullscreen());
+}
+
 void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
-    if (!m_parent || m_parent->space()->workspace()->m_monitor.lock() != monitor || coveredByFullscreen())
+    if (!m_parent || m_parent->space()->workspace()->m_monitor.lock() != monitor)
         return;
     controls();
     double scale = monitor->m_scale, u = unit();
@@ -382,7 +386,7 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
     // The empty desktop is wallpaper, not an overlay over unmanaged X11
     // windows (splash screens, menus and native presentation surfaces).
     if (background) {
-        if (m_enabled && !m_main.lock()) {
+        if (m_enabled && !coveredByFullscreen() && !m_main.lock()) {
             auto box = m_mainBox;
             rect(box, COLOR_SLOT, 16 * u);
             label("No task in the main area", {box.x, box.y + box.h / 2. - 44 * u, box.w, 40 * u}, COLOR_TEXT, 22, 600, true);
@@ -390,7 +394,7 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
         }
         return;
     }
-    if (m_enabled) {
+    if (m_enabled && !coveredByFullscreen()) {
         rect({area.x, area.y, area.w, BAR * u}, COLOR_BAR);
         rect({area.x, area.y + BAR * u - 1. / scale, area.w, 1. / scale}, COLOR_LINE);
         for (int i = 0; i < 3; ++i) {
@@ -490,6 +494,9 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
     }
     m_taskMenu = false;
     if (action == 0 || action == 1) {
+        if (action == 1)
+            if (auto window = Fullscreen::controller()->getFullscreenWindow(m_parent->space()->workspace(), true))
+                Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_NONE, Fullscreen::FSMODE_NONE);
         m_enabled = action == 1;
         if (!m_enabled)
             showFullscreenControls();
@@ -520,7 +527,7 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
         Desktop::focusState()->fullWindowFocus(task->window(), Desktop::FOCUS_REASON_CLICK);
 }
 void CYibuAlgorithm::showFullscreenControls() {
-    if (m_enabled)
+    if (m_enabled && !coveredByFullscreen())
         return;
     if (!m_fullscreenControlsVisible) {
         m_fullscreenControlsVisible = true;
@@ -533,7 +540,7 @@ void CYibuAlgorithm::showFullscreenControls() {
             g_pCompositor->m_wlEventLoop,
             [](void* data) {
                 auto self = static_cast<CYibuAlgorithm*>(data);
-                if (self->m_enabled || self->m_pointerButtons || self->m_pressedControl || (PROTO::data && PROTO::data->dndActive()))
+                if ((self->m_enabled && !self->coveredByFullscreen()) || self->m_pointerButtons || self->m_pressedControl || (PROTO::data && PROTO::data->dndActive()))
                     return 0;
                 self->m_fullscreenControlsVisible = false;
                 self->m_hoverControl              = -1;
@@ -560,16 +567,15 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
         else
             m_pointerButtons &= ~bit;
     }
-    // Native application fullscreen covers the entire Yibu chrome. Hidden
-    // controls and task slots must not intercept input intended for that app.
+    // Fullscreen applications receive input everywhere except the visible
+    // restore button. Task slots and the normal toolbar remain inactive.
     if (coveredByFullscreen()) {
-        m_pressedControl.reset();
-        m_pressedSlot = m_hoverControl = m_hoverSlot = m_promotedSlot = -1;
+        m_pressedSlot = m_hoverSlot = m_promotedSlot = -1;
         if (m_hoverTimer)
             wl_event_source_timer_update(m_hoverTimer, 0);
-        return false;
     }
     showFullscreenControls();
+    controls();
     Vector2D point = Vector2D{x, y} / monitor->m_scale + monitor->m_position;
     if (!(PROTO::data && PROTO::data->dndActive())) {
         auto control = std::ranges::find_if(m_controls, [&](const auto& item) { return item.box.containsPoint(point); });
@@ -592,7 +598,7 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
         if (m_pressedControl || control != m_controls.end())
             return true;
     }
-    if (!m_enabled)
+    if (!m_enabled || coveredByFullscreen())
         return false;
     int hit = -1;
     for (int i = 0; i < 3; ++i)
