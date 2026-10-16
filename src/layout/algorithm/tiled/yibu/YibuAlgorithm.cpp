@@ -3,6 +3,7 @@
 #include "../../../target/Target.hpp"
 #include "../../../../desktop/view/window/Window.hpp"
 #include "../../../../desktop/view/window/WindowPresentation.hpp"
+#include "../../../../desktop/view/window/WindowFullscreenPolicy.hpp"
 #include "../../../../desktop/state/FocusState.hpp"
 #include "../../../../event/EventBus.hpp"
 #include "../../../../output/Monitor.hpp"
@@ -494,13 +495,22 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
     }
     m_taskMenu = false;
     if (action == 0 || action == 1) {
-        if (action == 1)
-            if (auto window = Fullscreen::controller()->getFullscreenWindow(m_parent->space()->workspace(), true))
+        if (action == 1) {
+            auto window = Fullscreen::controller()->getFullscreenWindow(m_parent->space()->workspace(), true);
+            if (!window)
+                if (auto main = m_main.lock())
+                    window = main->window();
+            if (window) {
+                window->fullscreenPolicy().setUserRestored(true);
                 Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_NONE, Fullscreen::FSMODE_NONE);
+            }
+        }
         m_enabled = action == 1;
-        if (!m_enabled)
+        if (!m_enabled) {
+            if (auto main = m_main.lock(); main && main->window())
+                main->window()->fullscreenPolicy().setUserRestored(false);
             showFullscreenControls();
-        else if (m_controlsIdleTimer)
+        } else if (m_controlsIdleTimer)
             wl_event_source_timer_update(m_controlsIdleTimer, 0);
         if (toolbarPixels > 0)
             m_toolbarPixels = toolbarPixels;

@@ -85,3 +85,13 @@ TEST(WindowFullscreenPolicy, PinAndMaximizedRestorationAreIndependent) {
     EXPECT_FALSE(policy.pinFullscreened());
     EXPECT_FALSE(policy.restoreClientMaximized());
 }
+
+TEST(WindowFullscreenPolicy, UserRestorePersistsUntilExplicitlyCleared) {
+    CWindowFullscreenPolicy policy;
+    EXPECT_FALSE(policy.userRestored());
+    policy.setUserRestored(true);
+    policy.setRequestSuppression({});
+    EXPECT_TRUE(policy.userRestored());
+    policy.setUserRestored(false);
+    EXPECT_FALSE(policy.userRestored());
+}

@@ -78,3 +78,11 @@ bool CWindowFullscreenPolicy::restoreClientMaximized() const {
 void CWindowFullscreenPolicy::setRestoreClientMaximized(bool restore) {
     m_restoreClientMaximized = restore;
 }
+
+bool CWindowFullscreenPolicy::userRestored() const {
+    return m_userRestored;
+}
+
+void CWindowFullscreenPolicy::setUserRestored(bool restored) {
+    m_userRestored = restored;
+}

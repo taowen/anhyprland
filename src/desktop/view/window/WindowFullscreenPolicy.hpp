@@ -44,6 +44,9 @@ namespace Desktop::View {
         bool                                   pinFullscreened() const;
         void                                   setPinFullscreened(bool pinFullscreened);
 
+        bool                                   userRestored() const;
+        void                                   setUserRestored(bool restored);
+
         bool                                   restoreClientMaximized() const;
         void                                   setRestoreClientMaximized(bool restore);
 
@@ -54,5 +57,6 @@ namespace Desktop::View {
         bool                            m_expectsMaximizeEcho    = false;
         bool                            m_pinFullscreened        = false;
         bool                            m_restoreClientMaximized = false;
+        bool                            m_userRestored           = false;
     };
 }

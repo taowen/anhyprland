@@ -864,6 +864,11 @@ void CWindow::requestClientFullscreen(const SClientFullscreenRequest& request) {
     const bool  BACKEND_REQUEST    = request.origin == SClientFullscreenRequest::ORIGIN_BACKEND;
     const auto& SUPPRESSION        = m_fullscreenPolicy->requestSuppression();
 
+    // A compositor restore is an explicit user choice. Games may repeatedly
+    // reassert fullscreen after receiving the restored window size.
+    if (BACKEND_REQUEST && m_fullscreenPolicy->userRestored())
+        return;
+
     if (request.fullscreen.has_value() && !SUPPRESSION.fullscreen && (!BACKEND_REQUEST || !DRAGGINGTHISWINDOW)) {
         std::optional<MONITORID> requestedMonitor;
         if (request.fullscreenMonitor.has_value() && request.fullscreenMonitor.value() != MONITOR_INVALID && !SUPPRESSION.fullscreenOutput) {
@@ -1311,8 +1316,8 @@ void CWindow::mapWindow() {
 
         if (m_ruleApplicator->static_.fullscreenStateClient || m_ruleApplicator->static_.fullscreenStateInternal) {
             requestedFSState = Fullscreen::SFullscreenMode{
-                .internal = sc<Fullscreen::eFullscreenMode>(m_ruleApplicator->static_.fullscreenStateInternal.value_or(0)),
-                .client   = sc<Fullscreen::eFullscreenMode>(m_ruleApplicator->static_.fullscreenStateClient.value_or(0)),
+                     .internal = sc<Fullscreen::eFullscreenMode>(m_ruleApplicator->static_.fullscreenStateInternal.value_or(0)),
+                     .client   = sc<Fullscreen::eFullscreenMode>(m_ruleApplicator->static_.fullscreenStateClient.value_or(0)),
             };
         }
 
