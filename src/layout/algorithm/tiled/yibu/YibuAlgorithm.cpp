@@ -479,8 +479,7 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
         select(launcher);
     }
     if (action == 7) {
-        m_taskMenu = !m_taskMenu;
-        recalculate();
+        Config::Supplementary::executor()->spawn("python3 /usr/lib/arlinux/guest/yibu-launcher.py --tasks");
         return;
     }
     if (action == 8) {

@@ -7,6 +7,7 @@
 #include "../../../desktop/view/window/Window.hpp"
 #include "../../../desktop/view/window/WindowGroupMembership.hpp"
 #include "../../../desktop/view/window/WindowPresentation.hpp"
+#include "../../../desktop/view/window/WindowFullscreenPolicy.hpp"
 #include "../../../desktop/view/window/WindowSwallowController.hpp"
 #include "../../../desktop/view/Group.hpp"
 #include "../../../desktop/history/WindowHistoryTracker.hpp"
@@ -310,6 +311,9 @@ ActionResult Actions::fullscreenWindow(Fullscreen::eFullscreenMode internalMode,
     clientMode   = std::clamp(clientMode, sc<Fullscreen::eFullscreenMode>(0), Fullscreen::FSMODE_FULLSCREEN);
 
     window->m_ruleApplicator->syncFullscreenOverride(Desktop::Types::COverridableVar(false, Desktop::Types::PRIORITY_SET_PROP));
+
+    if (!KEEP_INTERNAL && !KEEP_CLIENT)
+        window->fullscreenPolicy().setUserRestored(internalMode == Fullscreen::FSMODE_NONE && clientMode == Fullscreen::FSMODE_NONE);
 
     const Fullscreen::SFullscreenMode NEW_MODES = {.internal = internalMode, .client = clientMode};
 
