@@ -60,6 +60,7 @@ namespace Desktop::View {
 
     struct SBackendTraits {
         bool overrideRedirect : 1       = false;
+        bool belowParent : 1            = false;
         bool modal : 1                  = false;
         bool hasModalChild : 1          = false;
         bool transient : 1              = false;

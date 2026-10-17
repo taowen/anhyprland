@@ -131,7 +131,9 @@ void CXWaylandSurface::map() {
 
     LOG(Log::DEBUG, "XWayland surface {:x} mapping", rc<uintptr_t>(this));
 
+    g_pXWayland->m_wm->updateUnmanagedStack(m_self.lock());
     m_events.map.emit();
+    g_pXWayland->m_wm->updateUnmanagedStack(m_self.lock());
 
     g_pXWayland->m_wm->updateClientList();
 }

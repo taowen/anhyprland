@@ -79,6 +79,7 @@ class CXWaylandSurface {
     pid_t                             m_pid         = 0;
     CBox                              m_geometry;
     bool                              m_overrideRedirect = false;
+    bool                              m_belowParent      = false;
     bool                              m_withdrawn        = false;
     bool                              m_fullscreen       = false;
     bool                              m_maximized        = false;

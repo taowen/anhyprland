@@ -21,6 +21,8 @@
 #include "../protocols/XWaylandShell.hpp"
 #include "../protocols/core/Compositor.hpp"
 #include "../desktop/state/FocusState.hpp"
+#include "../desktop/state/WindowState.hpp"
+#include "../desktop/view/window/Window.hpp"
 #include "../desktop/view/window/X11Backend.hpp"
 using Hyprutils::Memory::CUniquePointer;
 
@@ -99,11 +101,13 @@ void CXWM::handleConfigureNotify(xcb_configure_notify_event_t* e) {
     if (!XSURF)
         return;
 
+    updateOverrideRedirect(XSURF, e->override_redirect);
+    updateUnmanagedStack(XSURF);
+
     if (XSURF->m_geometry == CBox{e->x, e->y, e->width, e->height})
         return;
 
     XSURF->m_geometry = {e->x, e->y, e->width, e->height};
-    updateOverrideRedirect(XSURF, e->override_redirect);
     XSURF->m_events.setGeometry.emit();
 }
 
@@ -524,8 +528,10 @@ void CXWM::handleFocusIn(xcb_focus_in_event_t* e) {
 
     if (m_focusedSurface && m_focusedSurface->m_pid == XSURF->m_pid && e->sequence - m_lastFocusSeq <= 255)
         focusWindow(XSURF);
-    else
-        focusWindow(m_focusedSurface.lock());
+    else if (XSURF != m_focusedSurface)
+        // The cached desired surface is unchanged, but the X server focus is
+        // not. Re-send the focus protocol rather than taking the cached no-op.
+        focusWindow(m_focusedSurface.lock(), true);
 }
 
 void CXWM::handleFocusOut(xcb_focus_out_event_t* e) {
@@ -556,8 +562,8 @@ void CXWM::sendWMMessage(SP<CXWaylandSurface> surf, xcb_client_message_data_t* d
     xcb_flush(getConnection());
 }
 
-void CXWM::focusWindow(SP<CXWaylandSurface> surf) {
-    if (surf == m_focusedSurface)
+void CXWM::focusWindow(SP<CXWaylandSurface> surf, bool force) {
+    if (surf == m_focusedSurface && !force)
         return;
 
     m_focusedSurface = surf;
@@ -1239,6 +1245,47 @@ void CXWM::dissociate(SP<CXWaylandSurface> surf) {
     surf->m_events.resourceChange.emit();
 
     LOG(Log::DEBUG, "Dissociate for {:x}", rc<uintptr_t>(surf.get()));
+}
+
+// Override-redirect transients may be shadows BELOW their owner. WM_TRANSIENT_FOR
+// alone does not imply that they should cover it. Read the actual X stacking
+// order instead of classifying windows by application or title.
+void CXWM::updateUnmanagedStack(SP<CXWaylandSurface> surf) {
+    if (!surf)
+        return;
+    if (!surf->m_overrideRedirect) {
+        // Restacking the owner changes the relation without sending a
+        // ConfigureNotify to its override-redirect children.
+        for (const auto& child : surf->m_children) {
+            if (child && child->m_overrideRedirect)
+                updateUnmanagedStack(child.lock());
+        }
+        return;
+    }
+    if (!surf->m_parent)
+        return;
+
+    XCBReplyPtr<xcb_query_tree_reply_t> reply(xcb_query_tree_reply(getConnection(), xcb_query_tree(getConnection(), m_screen->root), nullptr));
+    if (!reply)
+        return;
+    const auto children = xcb_query_tree_children(reply.get());
+    const auto count = xcb_query_tree_children_length(reply.get());
+    const auto child = std::find(children, children + count, surf->m_xID);
+    const auto parent = std::find(children, children + count, surf->m_parent->m_xID);
+    if (child == children + count || parent == children + count)
+        return;
+
+    surf->m_belowParent = child < parent;
+    surf->m_events.stateChanged.emit();
+    if (!surf->m_mapped)
+        return;
+    for (const auto& window : Desktop::windowState()->windows()) {
+        if (window && window->mapped() && window->backend().clientID() ==
+            Desktop::View::SBackendClientID{.type = Desktop::View::eBackendType::WINDOW_BACKEND_X11, .id = surf->m_parent->m_xID}) {
+            Desktop::windowState()->raise(window);
+            break;
+        }
+    }
 }
 
 void CXWM::updateClientList() {

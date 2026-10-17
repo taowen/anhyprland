@@ -52,6 +52,11 @@ void CWindowState::moveToZ(PHLWINDOW w, bool top) {
     if (!View::validMapped(w) || m_windows.empty())
         return;
 
+    if (top && w->backend().traits().belowParent) {
+        if (const auto parent = w->backend().parent())
+            w = parent;
+    }
+
     w->fullscreenPolicy().setAllowedOverFullscreen(top);
     w->updateFullscreenInputState();
     *w->presentation().alpha(View::WINDOW_ALPHA_FULLSCREEN) = w->isBlockedByFullscreen() ? 0.F : 1.F;
@@ -77,20 +82,26 @@ void CWindowState::moveToZ(PHLWINDOW w, bool top) {
     // move X11 transient stack
     std::vector<PHLWINDOW> toMove;
 
-    auto                   collectX11Stack = [&](PHLWINDOW pw, auto&& collectX11Stack) -> void {
-        if (top)
-            toMove.emplace_back(pw);
-        else
-            toMove.insert(toMove.begin(), pw);
-
-        for (auto const& other : m_windows) {
-            if (other->mapped() && !other->isHidden() && other->backend().isX11() && other->backend().parent() == pw && other != pw &&
-                std::ranges::find(toMove, other) == toMove.end())
-                collectX11Stack(other, collectX11Stack);
-        }
+    std::vector<PHLWINDOW> visited;
+    auto collectX11Stack = [&](PHLWINDOW pw, auto&& collectX11Stack) -> void {
+        if (std::ranges::find(visited, pw) != visited.end())
+            return;
+        visited.emplace_back(pw);
+        auto collectChildren = [&](bool below) {
+            for (auto const& other : m_windows) {
+                if (other->mapped() && !other->isHidden() && other->backend().isX11() && other->backend().parent() == pw && other != pw &&
+                    other->backend().traits().belowParent == below)
+                    collectX11Stack(other, collectX11Stack);
+            }
+        };
+        collectChildren(true);
+        toMove.emplace_back(pw);
+        collectChildren(false);
     };
 
     collectX11Stack(w, collectX11Stack);
+    if (!top)
+        std::ranges::reverse(toMove);
     for (auto const& it : toMove) {
         moveSingleToZ(it);
     }

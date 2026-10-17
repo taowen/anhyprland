@@ -88,6 +88,7 @@ static SBackendTraits traitsFrom(const SP<CXWaylandSurface>& surface) {
 
     return {
         .overrideRedirect       = surface->m_overrideRedirect,
+        .belowParent            = surface->m_belowParent,
         .modal                  = surface->m_modal,
         .hasModalChild          = HAS_MODAL_CHILD,
         .transient              = surface->m_transient,
@@ -128,7 +129,7 @@ static bool metadataEqual(const SBackendMetadata& lhs, const SBackendMetadata& r
 }
 
 static bool traitsEqual(const SBackendTraits& lhs, const SBackendTraits& rhs) {
-    return lhs.overrideRedirect == rhs.overrideRedirect && lhs.modal == rhs.modal && lhs.hasModalChild == rhs.hasModalChild && lhs.transient == rhs.transient &&
+    return lhs.overrideRedirect == rhs.overrideRedirect && lhs.belowParent == rhs.belowParent && lhs.modal == rhs.modal && lhs.hasModalChild == rhs.hasModalChild && lhs.transient == rhs.transient &&
         lhs.wantsFocus == rhs.wantsFocus && lhs.suggestsFloat == rhs.suggestsFloat && lhs.suggestsNoInitialFocus == rhs.suggestsNoInitialFocus &&
         lhs.preventsFocus == rhs.preventsFocus && lhs.suggestsNoBorder == rhs.suggestsNoBorder && lhs.fullscreen == rhs.fullscreen;
 }

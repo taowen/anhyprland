@@ -75,7 +75,7 @@ static bool metadataEqual(const SBackendMetadata& lhs, const SBackendMetadata& r
 }
 
 static bool traitsEqual(const SBackendTraits& lhs, const SBackendTraits& rhs) {
-    return lhs.overrideRedirect == rhs.overrideRedirect && lhs.modal == rhs.modal && lhs.hasModalChild == rhs.hasModalChild && lhs.transient == rhs.transient &&
+    return lhs.overrideRedirect == rhs.overrideRedirect && lhs.belowParent == rhs.belowParent && lhs.modal == rhs.modal && lhs.hasModalChild == rhs.hasModalChild && lhs.transient == rhs.transient &&
         lhs.wantsFocus == rhs.wantsFocus && lhs.suggestsFloat == rhs.suggestsFloat && lhs.suggestsNoInitialFocus == rhs.suggestsNoInitialFocus &&
         lhs.preventsFocus == rhs.preventsFocus && lhs.suggestsNoBorder == rhs.suggestsNoBorder && lhs.fullscreen == rhs.fullscreen;
 }
