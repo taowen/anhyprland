@@ -16,6 +16,8 @@ int anhyprland_run(struct ANativeWindow* window, int width, int height, const ch
 // These calls are thread-safe. Window references are retained until processed.
 int  anhyprland_window(struct ANativeWindow* window, int width, int height);
 int  anhyprland_pointer(float x, float y, uint32_t button, int pressed);
+// Relative pixels; a button event does not warp the pointer. pressed < 0 means motion only.
+int  anhyprland_relative_pointer(float dx, float dy, int button, int pressed);
 int  anhyprland_open_apps(void);
 int  anhyprland_cursor_shape(void);
 void anhyprland_report_cursor_shape(uint32_t shape);

@@ -247,6 +247,17 @@ void CAndroidBackend::axis(float dx, float dy) {
     m_pointer->events.frame.emit();
 }
 
+void CAndroidBackend::relativePointer(float dx, float dy, uint32_t button, int pressed) {
+    if (!m_pointer || !std::isfinite(dx) || !std::isfinite(dy))
+        return;
+    const auto now = timeMs();
+    if (dx != 0.f || dy != 0.f)
+        m_pointer->events.move.emit(IPointer::SMoveEvent{.timeMs = now, .delta = {dx, dy}, .unaccel = {dx, dy}});
+    if (button && pressed >= 0)
+        m_pointer->events.button.emit(IPointer::SButtonEvent{.timeMs = now, .button = button, .pressed = pressed != 0});
+    m_pointer->events.frame.emit();
+}
+
 void CAndroidBackend::touch(int32_t id, int action, float x, float y) {
     if (!m_touch || m_width <= 0 || m_height <= 0 || !std::isfinite(x) || !std::isfinite(y))
         return;

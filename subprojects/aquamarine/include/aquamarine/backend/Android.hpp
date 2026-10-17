@@ -70,6 +70,7 @@ namespace Aquamarine {
         void scheduleFrame();
         bool frameScheduled() const;
         void pointer(float x, float y, uint32_t button, bool pressed);
+        void relativePointer(float dx, float dy, uint32_t button, int pressed);
         void axis(float dx, float dy);
         void touch(int32_t id, int action, float x, float y);
         void key(uint32_t evdev, bool pressed);

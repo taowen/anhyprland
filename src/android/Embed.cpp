@@ -173,6 +173,12 @@ extern "C" int anhyprland_open_apps() {
             layout->action(6, 0, 0);
     });
 }
+extern "C" int anhyprland_relative_pointer(float dx, float dy, int button, int pressed) {
+    return enqueue([=] {
+        if (auto output = backend())
+            output->relativePointer(dx, dy, button > 0 ? sc<uint32_t>(button) : 0, pressed);
+    });
+}
 extern "C" int anhyprland_cursor_shape() {
     return sc<int>(embed.cursorShape.load(std::memory_order_relaxed));
 }
