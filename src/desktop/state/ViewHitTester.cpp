@@ -52,6 +52,22 @@ PHLWINDOW CViewHitTester::windowAtInternal(const Vector2D& pos, uint16_t propert
     const auto  LASTFOCUSED           = focusState()->window();
     const auto& WINDOWS               = m_tracker.windows();
 
+    // Xwayland publishes the X Shape input region on its wl_surface. Testing
+    // only the window rectangle lets transparent helper windows steal focus
+    // while the X server delivers the same click to the window underneath.
+    const auto acceptsPoint = [&pos](PHLWINDOW w) {
+        if (!w->backend().isX11())
+            return true;
+        const auto SURFACE = w->backend().surface();
+        if (!SURFACE)
+            return false;
+        const auto LOCAL = w->backend().surfaceLocalToBuffer(pos - w->position(IGeometric::GEOMETRIC_CURRENT));
+        // Preserve compositor decorations and border resize hitboxes.
+        if (!CBox{Vector2D{}, SURFACE->m_current.size}.containsPoint(LOCAL))
+            return true;
+        return SURFACE->m_current.effectiveInputRegion().containsPoint(LOCAL);
+    };
+
     const auto  isShadowedByModal = [](PHLWINDOW w) -> bool { return *PMODALPARENTBLOCKING && !w->backend().isX11() && w->backend().traits().hasModalChild; };
 
     // pinned windows on top of floating regardless
@@ -66,7 +82,7 @@ PHLWINDOW CViewHitTester::windowAtInternal(const Vector2D& pos, uint16_t propert
                 CBox       box = BB.copy().expand(!w->backend().traits().overrideRedirect ? BORDER_GRAB_AREA : 0);
                 if (HITBOX_SHRINK > 0 && w != LASTFOCUSED)
                     box = box.copy().expand(-HITBOX_SHRINK);
-                if (box.containsPoint(pos))
+                if (box.containsPoint(pos) && acceptsPoint(w))
                     return w;
 
                 if (!w->backend().isX11()) {
@@ -110,7 +126,7 @@ PHLWINDOW CViewHitTester::windowAtInternal(const Vector2D& pos, uint16_t propert
                     CBox       box = BB.copy().expand(!w->backend().traits().overrideRedirect ? BORDER_GRAB_AREA : 0);
                     if (HITBOX_SHRINK > 0 && w != LASTFOCUSED)
                         box = box.copy().expand(-HITBOX_SHRINK);
-                    if (box.containsPoint(pos)) {
+                    if (box.containsPoint(pos) && acceptsPoint(w)) {
                         if (w->backend().isX11()) {
                             const auto TRAITS = w->backend().traits();
                             if (TRAITS.overrideRedirect && !TRAITS.wantsFocus) {
@@ -241,7 +257,7 @@ PHLWINDOW CViewHitTester::windowAtInternal(const Vector2D& pos, uint16_t propert
                 }
                 if (HITBOX_SHRINK > 0 && w != LASTFOCUSED)
                     box = box.copy().expand(-HITBOX_SHRINK);
-                if (box.containsPoint(pos))
+                if (box.containsPoint(pos) && acceptsPoint(w))
                     return w;
             }
         }

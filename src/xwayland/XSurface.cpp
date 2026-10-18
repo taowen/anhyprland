@@ -239,6 +239,7 @@ void CXWaylandSurface::setFullscreen(bool fs) {
 
 void CXWaylandSurface::setMinimized(bool mz) {
     m_minimized = mz;
+    setWithdrawn(m_withdrawn);
     g_pXWayland->m_wm->sendState(m_self.lock());
 }
 

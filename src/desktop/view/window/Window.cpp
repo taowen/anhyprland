@@ -848,6 +848,12 @@ void CWindow::activate(bool force) {
 }
 
 void CWindow::onUpdateState(const SBackendStateRequest& request) {
+    // This desktop keeps windows available as tasks instead of iconifying
+    // them. Acknowledge the retained state: silently ignoring an X11 request
+    // leaves clients waiting for WM_STATE with their own window minimized.
+    if (request.minimized.has_value())
+        m_backend->setMinimized(false);
+
     requestClientFullscreen({
         .fullscreen        = request.fullscreen,
         .maximized         = request.maximized,
