@@ -5,6 +5,7 @@
 #include "../../../../desktop/view/window/WindowPresentation.hpp"
 #include "../../../../desktop/view/window/WindowFullscreenPolicy.hpp"
 #include "../../../../desktop/state/FocusState.hpp"
+#include "../../../../desktop/state/WindowState.hpp"
 #include "../../../../event/EventBus.hpp"
 #include "../../../../output/Monitor.hpp"
 #include "../../../../helpers/MiscFunctions.hpp"
@@ -30,6 +31,7 @@ static std::vector<CYibuAlgorithm*> layouts;
 CYibuAlgorithm::CYibuAlgorithm() {
     layouts.push_back(this);
     m_focus = Event::bus()->m_events.window.active.listen([this](PHLWINDOW window, Desktop::eFocusReason reason) {
+        m_revealActiveTab = true;
         if (!m_arranging && m_parent && window && window->m_workspace == m_parent->space()->workspace()) {
             auto target = window->layoutTarget();
             if (std::ranges::any_of(m_tasks, [&](const auto& t) { return t.lock() == target; }))
@@ -201,21 +203,22 @@ void CYibuAlgorithm::controls() {
     auto   add  = [&](CBox box, std::string label, int action, int target, eControlStyle style, bool active = false, std::string app = "") {
         m_controls.push_back({box, std::move(label), std::move(app), action, target, style, active});
     };
-    auto main     = m_main.lock();
-    bool canClose = main && main->window();
+    auto live        = tabWindows();
+    auto selected    = activeTab(live);
+    auto closeWindow = selected;
+    if (auto focused = Desktop::focusState()->window();
+        selected && focused && focused->mapped() && focused->m_workspace == m_parent->space()->workspace() && focused->backend().traits().modal)
+        closeWindow = focused;
+    bool canClose = bool(closeWindow);
     if (!m_enabled || coveredByFullscreen()) {
         double right = area.x + area.w - 10 * u;
         if (m_fullscreenControlsVisible)
             add({right - 40 * u, area.y + 10 * u, 40 * u, 40 * u}, "", 1, 0, CONTROL_FLOAT);
         return;
     }
-    std::vector<SP<ITarget>> live;
-    for (auto& weak : m_tasks)
-        if (auto task = weak.lock(); task && task->window())
-            live.push_back(task);
     double y = area.y + 8 * u, h = 40 * u, right = area.x + area.w - 10 * u;
     if (canClose) {
-        add({right - 40 * u, y, 40 * u, h}, "", 8, main->window()->metadata().stableID(), CONTROL_CLOSE);
+        add({right - 40 * u, y, 40 * u, h}, "", 8, closeWindow->metadata().stableID(), CONTROL_CLOSE);
         right -= 48 * u;
         add({right - 40 * u, y, 40 * u, h}, "", 0, 0, CONTROL_BUTTON);
         right -= 48 * u;
@@ -225,12 +228,35 @@ void CYibuAlgorithm::controls() {
     add({area.x + 10 * u, y, 112 * u, h}, m_left ? "Sidebar ›" : "‹ Sidebar", 5, 0, CONTROL_BUTTON);
     add(apps, "+ Apps", 6, 0, CONTROL_PRIMARY);
     add(tasks, "Tasks " + std::to_string(live.size()), 7, 0, CONTROL_BUTTON, m_taskMenu);
-    // Running tasks as a strip of chips; those that do not fit stay in the Tasks panel.
+    // One chip per business window, without application grouping. Floating
+    // document/tool dialogs participate without becoming tiled layout targets.
     double x0 = area.x + 134 * u, x1 = apps.x - 14 * u;
-    double w = live.empty() ? 0. : std::clamp((x1 - x0) / live.size(), 120. * u, 210. * u);
-    for (size_t i = 0; i < live.size() && x0 + (i + 1) * w <= x1 + 1; ++i)
-        add({x0 + i * w, y, w - 8 * u, h}, live[i]->window()->metadata().title(), 4, live[i]->window()->metadata().stableID(), CONTROL_TASK, live[i] == m_main.lock(),
-            live[i]->window()->metadata().appID());
+    const bool overflow = live.size() * 120. * u > x1 - x0;
+    if (overflow) {
+        x0 += 36 * u;
+        x1 -= 36 * u;
+    }
+    m_tabCapacity = std::max<size_t>(1, std::floor(std::max(0., x1 - x0) / (120. * u)));
+    m_tabFirst    = std::min(m_tabFirst, live.size() > m_tabCapacity ? live.size() - m_tabCapacity : 0);
+    if (m_revealActiveTab && selected) {
+        auto   it    = std::ranges::find(live, selected);
+        size_t index = it - live.begin();
+        if (index < m_tabFirst)
+            m_tabFirst = index;
+        else if (index >= m_tabFirst + m_tabCapacity)
+            m_tabFirst = index - m_tabCapacity + 1;
+    }
+    m_revealActiveTab = false;
+    if (overflow && m_tabFirst > 0)
+        add({x0 - 36 * u, y, 32 * u, h}, "‹", 9, 0, CONTROL_BUTTON);
+    if (overflow && m_tabFirst + m_tabCapacity < live.size())
+        add({x1 + 4 * u, y, 32 * u, h}, "›", 10, 0, CONTROL_BUTTON);
+    size_t count = std::min(m_tabCapacity, live.size() - m_tabFirst);
+    double w     = count ? std::min(210. * u, std::max(0., x1 - x0) / count) : 0.;
+    for (size_t i = 0; i < count && w > 8 * u; ++i) {
+        auto window = live[m_tabFirst + i];
+        add({x0 + i * w, y, w - 8 * u, h}, window->metadata().title(), 4, window->metadata().stableID(), CONTROL_TASK, window == selected, window->metadata().appID());
+    }
     for (int i = 0; i < 3; ++i) {
         if (m_slots[i].expired())
             continue;
@@ -242,8 +268,40 @@ void CYibuAlgorithm::controls() {
     int rows  = std::min<int>(live.size(), std::floor((area.h - BAR * u - 40 * u) / (48 * u)));
     m_menuBox = {tasks.x + tasks.w - 400 * u, area.y + BAR * u + 6 * u, 400 * u, 16 * u + std::max(1, rows) * 48 * u};
     for (int i = 0; i < rows; ++i)
-        add({m_menuBox.x + 8 * u, m_menuBox.y + 8 * u + i * 48 * u, m_menuBox.w - 16 * u, 44 * u}, live[i]->window()->metadata().title(), 4,
-            live[i]->window()->metadata().stableID(), CONTROL_ROW, live[i] == m_main.lock(), live[i]->window()->metadata().appID());
+        add({m_menuBox.x + 8 * u, m_menuBox.y + 8 * u + i * 48 * u, m_menuBox.w - 16 * u, 44 * u}, live[i]->metadata().title(), 4, live[i]->metadata().stableID(), CONTROL_ROW,
+            live[i] == selected, live[i]->metadata().appID());
+}
+
+std::vector<PHLWINDOW> CYibuAlgorithm::tabWindows() const {
+    std::vector<PHLWINDOW> result;
+    if (!m_parent)
+        return result;
+    for (const auto& window : Desktop::windowState()->windows()) {
+        if (!window->mapped() || window->m_workspace != m_parent->space()->workspace())
+            continue;
+        const auto traits = window->backend().traits();
+        if (traits.overrideRedirect || traits.modal || traits.preventsFocus || !traits.wantsFocus)
+            continue;
+        // Untitled floating helpers are not user-facing switch targets. Keep
+        // untitled tiled documents, whose title may arrive after their map.
+        if (window->isFloating() && window->metadata().title().empty())
+            continue;
+        result.push_back(window);
+    }
+    // Raising/focusing a window must not move its tab under the user's pointer.
+    std::ranges::sort(result, {}, [](const auto& window) { return window->metadata().stableID(); });
+    return result;
+}
+
+PHLWINDOW CYibuAlgorithm::activeTab(const std::vector<PHLWINDOW>& windows) const {
+    auto focused = Desktop::focusState()->window();
+    // A modal dialog highlights its owner's tab instead of adding another tab.
+    for (size_t depth = 0; focused && depth < 32; ++depth, focused = focused->backend().parent())
+        if (std::ranges::find(windows, focused) != windows.end())
+            return focused;
+    if (auto main = m_main.lock(); main && std::ranges::find(windows, main->window()) != windows.end())
+        return main->window();
+    return nullptr;
 }
 
 SP<Render::ITexture> CYibuAlgorithm::text(const std::string& label, const CHyprColor& color, int pixels, int weight, int maxWidth) {
@@ -485,11 +543,19 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
     if (action == 8) {
         // Address the window captured on pointer-down, not whichever window
         // happens to have focus on release. Never force-kill an application.
-        for (auto& weak : m_tasks)
-            if (auto task = weak.lock(); task && task->window() && task->window()->metadata().stableID() == static_cast<uint64_t>(target)) {
-                task->window()->sendClose();
+        for (const auto& window : Desktop::windowState()->windows())
+            if (window->mapped() && window->m_workspace == m_parent->space()->workspace() && window->metadata().stableID() == static_cast<uint64_t>(target)) {
+                window->sendClose();
                 break;
             }
+        return;
+    }
+    if (action == 9 || action == 10) {
+        m_tabFirst        = action == 9 ? (m_tabFirst > m_tabCapacity ? m_tabFirst - m_tabCapacity : 0) : m_tabFirst + m_tabCapacity;
+        m_revealActiveTab = false;
+        controls();
+        if (auto monitor = m_parent->space()->workspace()->m_monitor.lock())
+            g_pHyprRenderer->damageMonitor(monitor);
         return;
     }
     m_taskMenu = false;
@@ -525,11 +591,25 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
     } else if (action == 3 && target >= 0 && target < 3)
         m_slots[target].reset();
     else if (action == 4) {
-        for (auto& weak : m_tasks)
-            if (auto task = weak.lock(); task && task->window()->metadata().stableID() == static_cast<uint64_t>(target)) {
-                select(task);
-                break;
+        for (auto& window : tabWindows()) {
+            if (window->metadata().stableID() != static_cast<uint64_t>(target))
+                continue;
+            // Restore the owning tiled document before focusing its floating
+            // window. Never launch another application to switch windows.
+            auto owner = window;
+            for (size_t depth = 0; owner && depth < 32; ++depth, owner = owner->backend().parent()) {
+                auto it = std::ranges::find_if(m_tasks, [&](const auto& weak) { return weak.lock() && weak.lock()->window() == owner; });
+                if (it != m_tasks.end()) {
+                    select(it->lock());
+                    break;
+                }
             }
+            m_revealActiveTab = true;
+            Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
+            controls();
+            return;
+        }
+        return;
     }
     recalculate();
     if (auto task = m_main.lock())

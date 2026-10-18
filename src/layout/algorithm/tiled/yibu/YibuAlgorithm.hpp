@@ -50,6 +50,8 @@ namespace Layout::Tiled {
         CBox                       m_mainBox, m_menuBox;
         bool                       m_enabled = true, m_left = false, m_arranging = false;
         int                        m_toolbarPixels = 200, m_pressedSlot = -1, m_hoverControl = -1;
+        size_t                     m_tabFirst = 0, m_tabCapacity = 1;
+        bool                       m_revealActiveTab = true;
         struct SControl {
             CBox          box;
             std::string   label, app;
@@ -72,6 +74,8 @@ namespace Layout::Tiled {
         void                                                  focusMain();
         int                                                   slot(SP<ITarget>) const;
         void                                                  controls();
+        std::vector<PHLWINDOW>                                tabWindows() const;
+        PHLWINDOW                                             activeTab(const std::vector<PHLWINDOW>&) const;
         void                                                  showFullscreenControls();
         bool                                                  coveredByFullscreen() const;
         double                                                unit() const;
