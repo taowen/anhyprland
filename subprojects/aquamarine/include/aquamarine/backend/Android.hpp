@@ -66,6 +66,8 @@ namespace Aquamarine {
         Hyprutils::Memory::CWeakPointer<IBackendImplementation> getPrimary() override;
 
         bool setWindow(ANativeWindow* window, int width, int height);
+        void setRefreshRate(int millihertz);
+        int refreshIntervalNs() const;
         ANativeWindow* window() const;
         void scheduleFrame();
         bool frameScheduled() const;
@@ -89,6 +91,7 @@ namespace Aquamarine {
         Hyprutils::OS::CFileDescriptor m_timer;
         ANativeWindow* m_window = nullptr;
         int m_width = 0, m_height = 0;
+        int m_refreshRate = 60000;
         bool m_frameScheduled = false;
         std::chrono::steady_clock::time_point m_lastFrame;
     };

@@ -162,9 +162,18 @@ extern "C" int anhyprland_window(ANativeWindow* window, int width, int height) {
 
 extern "C" int anhyprland_pointer(float x, float y, uint32_t button, int pressed) {
     return enqueue([=] {
-        if (auto layout = Layout::Tiled::CYibuAlgorithm::active(); layout && layout->pointer(x, y, button, pressed)) return;
+        if (auto layout = Layout::Tiled::CYibuAlgorithm::active(); layout && layout->pointer(x, y, button, pressed))
+            return;
         if (auto output = backend())
             output->pointer(x, y, button, pressed);
+    });
+}
+extern "C" int anhyprland_refresh_rate(int millihertz) {
+    if (millihertz < 1000 || millihertz > 1000000)
+        return -EINVAL;
+    return enqueue([=] {
+        if (auto output = backend())
+            output->setRefreshRate(millihertz);
     });
 }
 extern "C" int anhyprland_open_apps() {
@@ -274,7 +283,7 @@ extern "C" int anhyprland_unicode(uint32_t codepoint) {
         const bool rightCtrl  = keyboard->getPressed(97);
         const bool leftShift  = keyboard->getPressed(42);
         const bool rightShift = keyboard->getPressed(54);
-        const auto tap = [&](uint32_t key) {
+        const auto tap        = [&](uint32_t key) {
             output->key(key, true);
             output->key(key, false);
         };
@@ -292,8 +301,8 @@ extern "C" int anhyprland_unicode(uint32_t codepoint) {
         if (rightCtrl)
             output->key(97, false);
 
-        char hex[9];
-        const int length = std::snprintf(hex, sizeof(hex), "%x", codepoint);
+        char               hex[9];
+        const int          length    = std::snprintf(hex, sizeof(hex), "%x", codepoint);
         constexpr uint32_t letters[] = {30, 48, 46, 32, 18, 33};
         for (int index = 0; index < length; ++index) {
             const unsigned digit = hex[index] <= '9' ? hex[index] - '0' : hex[index] - 'a' + 10;

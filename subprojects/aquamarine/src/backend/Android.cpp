@@ -15,6 +15,14 @@ static uint32_t timeMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
+static constexpr int64_t refreshInterval(int millihertz) {
+    return (1000000000000LL + millihertz - 1) / millihertz;
+}
+static_assert(refreshInterval(60000) == 16666667);
+static_assert(refreshInterval(90000) == 11111112);
+static_assert(refreshInterval(120000) == 8333334);
+static_assert(refreshInterval(59940) == 16683351);
+
 AHardwareBuffer* IBuffer::androidBuffer() {
     return nullptr;
 }
@@ -107,7 +115,7 @@ bool CAndroidOutput::commit() {
     if (pending.committed & COutputState::AQ_OUTPUT_STATE_BUFFER) {
         timespec now = {};
         clock_gettime(CLOCK_MONOTONIC, &now);
-        events.present.emit(SPresentEvent{.presented = submitted, .when = &now, .refresh = 16666667});
+        events.present.emit(SPresentEvent{.presented = submitted, .when = &now, .refresh = m_backend->refreshIntervalNs()});
     }
     return true;
 }
@@ -183,7 +191,7 @@ bool CAndroidBackend::createOutput(const std::string&) {
     if (m_output)
         return false;
     m_output = makeShared<CAndroidOutput>(self);
-    m_output->modes.emplace_back(makeShared<SOutputMode>(Vector2D{m_width, m_height}, 60000, true));
+    m_output->modes.emplace_back(makeShared<SOutputMode>(Vector2D{m_width, m_height}, m_refreshRate, true));
     m_output->swapchain = CSwapchain::create(m_allocator, self.lock());
     m_backend->events.newOutput.emit(m_output);
     return true;
@@ -193,6 +201,25 @@ std::vector<CSharedPointer<IAllocator>> CAndroidBackend::getAllocators() { retur
 CWeakPointer<IBackendImplementation> CAndroidBackend::getPrimary() { return {}; }
 ANativeWindow* CAndroidBackend::window() const { return m_window; }
 bool CAndroidBackend::frameScheduled() const { return m_frameScheduled; }
+
+int CAndroidBackend::refreshIntervalNs() const {
+    return static_cast<int>(refreshInterval(m_refreshRate));
+}
+
+void CAndroidBackend::setRefreshRate(int millihertz) {
+    if (millihertz < 1000 || millihertz > 1000000 || millihertz == m_refreshRate)
+        return;
+    m_refreshRate = millihertz;
+    if (m_output) {
+        m_output->modes.clear();
+        m_output->modes.emplace_back(makeShared<SOutputMode>(Vector2D{m_width, m_height}, m_refreshRate, true));
+        // An empty size requests monitor-rule reapplication, including the new
+        // preferred mode. Resizing would unnecessarily alter game resolution.
+        m_output->events.state.emit(IOutput::SStateEvent{});
+    }
+    m_frameScheduled = false;
+    scheduleFrame();
+}
 
 bool CAndroidBackend::setWindow(ANativeWindow* window, int width, int height) {
     if (window && (width <= 0 || height <= 0))
@@ -222,7 +249,7 @@ bool CAndroidBackend::setWindow(ANativeWindow* window, int width, int height) {
 void CAndroidBackend::scheduleFrame() {
     if (!m_window || m_frameScheduled)
         return;
-    const auto next = std::max(m_lastFrame + std::chrono::nanoseconds(16666667), std::chrono::steady_clock::now() + std::chrono::nanoseconds(1));
+    const auto next = std::max(m_lastFrame + std::chrono::nanoseconds(refreshIntervalNs()), std::chrono::steady_clock::now() + std::chrono::nanoseconds(1));
     const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(next.time_since_epoch()).count();
     itimerspec timer = {.it_value = {.tv_sec = ns / 1000000000, .tv_nsec = ns % 1000000000}};
     m_frameScheduled = timerfd_settime(m_timer.get(), TFD_TIMER_ABSTIME, &timer, nullptr) == 0;
