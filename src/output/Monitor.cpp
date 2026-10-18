@@ -232,7 +232,7 @@ void CMonitor::onConnect(bool noRule) {
         if (event.size == Vector2D{}) {
             // an indication to re-set state
             // we can't do much for createdByUser displays I think
-            if (m_createdByUser)
+            if (m_createdByUser && m_output->getBackend()->type() != Aquamarine::AQ_BACKEND_ANDROID)
                 return;
 
             LOG(Log::DEBUG, "Reapplying monitor rule for {} from a state request", m_name);
