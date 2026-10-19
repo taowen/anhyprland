@@ -61,9 +61,6 @@ void CWindowState::moveToZ(PHLWINDOW w, bool top) {
     w->updateFullscreenInputState();
     *w->presentation().alpha(View::WINDOW_ALPHA_FULLSCREEN) = w->isBlockedByFullscreen() ? 0.F : 1.F;
 
-    if (w == (top ? m_windows.back() : m_windows.front()))
-        return;
-
     auto moveSingleToZ = [&](PHLWINDOW pw) -> void {
         if (top)
             moveToTop(pw);
@@ -74,24 +71,20 @@ void CWindowState::moveToZ(PHLWINDOW w, bool top) {
             g_pHyprRenderer->damageMonitor(pw->m_monitor.lock());
     };
 
-    if (!w->backend().isX11()) {
-        moveSingleToZ(w);
-        return;
-    }
-
-    // move X11 transient stack
+    // Both X11 transients and xdg_toplevel parents define a stacking family.
+    // Raising an owner must not cover the dialog that has disabled it.
     std::vector<PHLWINDOW> toMove;
 
     std::vector<PHLWINDOW> visited;
-    auto collectX11Stack = [&](PHLWINDOW pw, auto&& collectX11Stack) -> void {
+    auto collectStack = [&](PHLWINDOW pw, auto&& collectStack) -> void {
         if (std::ranges::find(visited, pw) != visited.end())
             return;
         visited.emplace_back(pw);
         auto collectChildren = [&](bool below) {
             for (auto const& other : m_windows) {
-                if (other->mapped() && !other->isHidden() && other->backend().isX11() && other->backend().parent() == pw && other != pw &&
+                if (other->mapped() && !other->isHidden() && other->backend().parent() == pw && other != pw &&
                     other->backend().traits().belowParent == below)
-                    collectX11Stack(other, collectX11Stack);
+                    collectStack(other, collectStack);
             }
         };
         collectChildren(true);
@@ -99,7 +92,7 @@ void CWindowState::moveToZ(PHLWINDOW w, bool top) {
         collectChildren(false);
     };
 
-    collectX11Stack(w, collectX11Stack);
+    collectStack(w, collectStack);
     if (!top)
         std::ranges::reverse(toMove);
     for (auto const& it : toMove) {
