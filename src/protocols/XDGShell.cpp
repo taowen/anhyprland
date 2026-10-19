@@ -528,14 +528,12 @@ CXDGSurfaceResource::CXDGSurfaceResource(SP<CXdgSurface> resource_, SP<CXDGWMBas
     m_resource->setData(this);
 
     m_resource->setDestroy([this](CXdgSurface* r) {
-        if (m_mapped)
-            m_events.unmap.emit();
+        unmap();
         m_events.destroy.emit();
         PROTO::xdgShell->destroyResource(this);
     });
     m_resource->setOnDestroy([this](CXdgSurface* r) {
-        if (m_mapped)
-            m_events.unmap.emit();
+        unmap();
         m_events.destroy.emit();
         PROTO::xdgShell->destroyResource(this);
     });
@@ -545,10 +543,7 @@ CXDGSurfaceResource::CXDGSurfaceResource(SP<CXdgSurface> resource_, SP<CXDGWMBas
         m_listeners.surfaceDestroy.reset();
         m_listeners.surfaceCommit.reset();
 
-        if (m_mapped)
-            m_events.unmap.emit();
-
-        m_mapped = false;
+        unmap();
         m_surface.reset();
         m_events.destroy.emit();
     });
@@ -571,9 +566,7 @@ CXDGSurfaceResource::CXDGSurfaceResource(SP<CXdgSurface> resource_, SP<CXDGWMBas
         }
 
         if (!m_surface->m_current.texture && m_mapped) {
-            m_mapped = false;
-            m_events.unmap.emit();
-            m_surface->unmap();
+            unmap();
             return;
         }
 
@@ -645,6 +638,19 @@ CXDGSurfaceResource::CXDGSurfaceResource(SP<CXdgSurface> resource_, SP<CXDGWMBas
         if (m_surface)
             m_surface->m_pending.updated.bits.xdgshell = true;
     });
+}
+
+void CXDGSurfaceResource::unmap() {
+    if (!m_mapped)
+        return;
+
+    m_mapped = false;
+    m_events.unmap.emit();
+    // Role destruction must retire the underlying mapping too. Otherwise a
+    // later role's initial bufferless commit is discarded as an empty update
+    // to an already-mapped surface, so the client never receives configure.
+    if (m_surface)
+        m_surface->unmap();
 }
 
 CXDGSurfaceResource::~CXDGSurfaceResource() {

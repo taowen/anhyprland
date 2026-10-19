@@ -223,6 +223,8 @@ class CXDGSurfaceResource {
     void configure();
 
   private:
+    void                      unmap();
+
     SP<CXdgSurface>           m_resource;
 
     UP<SEventLoopDoLaterLock> m_stateUpdate;
