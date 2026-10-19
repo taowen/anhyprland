@@ -227,7 +227,7 @@ void CYibuAlgorithm::controls() {
     CBox apps{tasks.x - 104 * u, y, 94 * u, h};
     add({area.x + 10 * u, y, 112 * u, h}, m_left ? "Sidebar ›" : "‹ Sidebar", 5, 0, CONTROL_BUTTON);
     add(apps, "+ Apps", 6, 0, CONTROL_PRIMARY);
-    add(tasks, "Tasks " + std::to_string(live.size()), 7, 0, CONTROL_BUTTON, m_taskMenu);
+    add(tasks, "Tasks", 7, 0, CONTROL_BUTTON, m_taskMenu);
     // One chip per business window, without application grouping. Floating
     // document/tool dialogs participate without becoming tiled layout targets.
     double x0 = area.x + 134 * u, x1 = apps.x - 14 * u;
