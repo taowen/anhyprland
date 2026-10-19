@@ -298,6 +298,8 @@ void CWaylandBackend::configure(const CBox& logicalBox, PHLMONITOR preferredMoni
         return;
 
     const auto CLIENT_BOX = logicalToClient(logicalBox, preferredMonitor);
+    const auto WINDOW     = m_window.lock();
+    TOPLEVEL->setTiled(WINDOW && !WINDOW->isFloating());
     if (!force && m_pendingReportedSize == CLIENT_BOX.size())
         return;
 

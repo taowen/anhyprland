@@ -116,6 +116,7 @@ class CXDGToplevelResource {
     // schedule a configure event
     uint32_t setSize(const Vector2D& size);
     uint32_t setMaximized(bool maximized);
+    uint32_t setTiled(bool tiled);
     uint32_t setFullscreen(bool fullscreen);
     uint32_t setActive(bool active);
     uint32_t setResizing(bool resizing);

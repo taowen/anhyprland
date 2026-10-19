@@ -173,13 +173,6 @@ CXDGToplevelResource::CXDGToplevelResource(SP<CXdgToplevel> resource_, SP<CXDGSu
         wl_array_release(&arr);
     }
 
-    if (m_resource->version() >= 2) {
-        m_pendingApply.states.push_back(XDG_TOPLEVEL_STATE_TILED_LEFT);
-        m_pendingApply.states.push_back(XDG_TOPLEVEL_STATE_TILED_RIGHT);
-        m_pendingApply.states.push_back(XDG_TOPLEVEL_STATE_TILED_TOP);
-        m_pendingApply.states.push_back(XDG_TOPLEVEL_STATE_TILED_BOTTOM);
-    }
-
     m_resource->setSetTitle([this](CXdgToplevel* r, const char* t) {
         m_state.title = t;
         m_events.metadataChanged.emit();
@@ -396,6 +389,25 @@ uint32_t CXDGToplevelResource::setMaximized(bool maximized) {
 
     scheduleStateApplication();
 
+    return m_owner->scheduleConfigure();
+}
+
+uint32_t CXDGToplevelResource::setTiled(bool tiled) {
+    if (m_resource->version() < 2)
+        return m_owner->m_scheduledSerial;
+
+    const bool SET = std::ranges::find(m_pendingApply.states, XDG_TOPLEVEL_STATE_TILED_LEFT) != m_pendingApply.states.end();
+    if (SET == tiled)
+        return m_owner->m_scheduledSerial;
+
+    for (const auto state : {XDG_TOPLEVEL_STATE_TILED_LEFT, XDG_TOPLEVEL_STATE_TILED_RIGHT, XDG_TOPLEVEL_STATE_TILED_TOP, XDG_TOPLEVEL_STATE_TILED_BOTTOM}) {
+        if (tiled)
+            m_pendingApply.states.push_back(state);
+        else
+            std::erase(m_pendingApply.states, state);
+    }
+
+    scheduleStateApplication();
     return m_owner->scheduleConfigure();
 }
 
