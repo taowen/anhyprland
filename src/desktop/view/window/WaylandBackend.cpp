@@ -75,8 +75,8 @@ static bool metadataEqual(const SBackendMetadata& lhs, const SBackendMetadata& r
 }
 
 static bool traitsEqual(const SBackendTraits& lhs, const SBackendTraits& rhs) {
-    return lhs.overrideRedirect == rhs.overrideRedirect && lhs.belowParent == rhs.belowParent && lhs.modal == rhs.modal && lhs.hasModalChild == rhs.hasModalChild && lhs.transient == rhs.transient &&
-        lhs.wantsFocus == rhs.wantsFocus && lhs.suggestsFloat == rhs.suggestsFloat && lhs.suggestsNoInitialFocus == rhs.suggestsNoInitialFocus &&
+    return lhs.overrideRedirect == rhs.overrideRedirect && lhs.belowParent == rhs.belowParent && lhs.modal == rhs.modal && lhs.hasModalChild == rhs.hasModalChild &&
+        lhs.transient == rhs.transient && lhs.wantsFocus == rhs.wantsFocus && lhs.suggestsFloat == rhs.suggestsFloat && lhs.suggestsNoInitialFocus == rhs.suggestsNoInitialFocus &&
         lhs.preventsFocus == rhs.preventsFocus && lhs.suggestsNoBorder == rhs.suggestsNoBorder && lhs.fullscreen == rhs.fullscreen;
 }
 
@@ -170,19 +170,11 @@ CWaylandBackend::CWaylandBackend(SP<CXDGSurfaceResource> resource) : m_resource(
 
             updateTraits(true);
 
-            // This is tricky, but we essentially check if the app requested any type of maximize.
-            // If it did, we send the inverse of our internal state.
-            // This is because apps are always "maximized" under Hyprland + Wayland, check setMaximized().
-            const auto REQUESTED_MAXIMIZE = TOPLEVEL->m_state.requestsMaximize.has_value();
-            auto       requestsMaximize   = std::optional<bool>{std::nullopt};
-            if (REQUESTED_MAXIMIZE)
-                requestsMaximize = !Fullscreen::controller()->isFullscreen(m_window.lock(), Fullscreen::FSMODE_MAXIMIZED);
-
             m_events.stateRequest.emit({
-                .fullscreen        = TOPLEVEL->m_state.requestsFullscreen,
-                .fullscreenMonitor = TOPLEVEL->m_state.requestsFullscreenMonitor,
-                .maximized         = requestsMaximize,
-                .minimized         = TOPLEVEL->m_state.requestsMinimize,
+                     .fullscreen        = TOPLEVEL->m_state.requestsFullscreen,
+                     .fullscreenMonitor = TOPLEVEL->m_state.requestsFullscreenMonitor,
+                     .maximized         = TOPLEVEL->m_state.requestsMaximize,
+                     .minimized         = TOPLEVEL->m_state.requestsMinimize,
             });
         });
         m_listeners.sizeLimits = TOPLEVEL->m_events.sizeLimitsChanged.listen([this] {
@@ -335,15 +327,9 @@ void CWaylandBackend::setFullscreen(bool fullscreen) {
 }
 
 void CWaylandBackend::setMaximized(bool maximized) {
-    // Do not let Wayland propagate maximized states.
-    // Hyprland always sets Maximized for apps to force them to not draw CSD.
-    // Even in 2026, GTK can still draw CSD even with tiled properties,
-    // and our MR to w-p to fix this problem has gotten the classic gnome "usecase????"
-    // so we can't fucking do shit with this idiotic, braindead bs
-
-    // const auto RESOURCE = m_resource.lock();
-    // if (RESOURCE && RESOURCE->m_toplevel)
-    //     RESOURCE->m_toplevel->setMaximized(maximized);
+    const auto RESOURCE = m_resource.lock();
+    if (RESOURCE && RESOURCE->m_toplevel)
+        RESOURCE->m_toplevel->setMaximized(maximized);
 }
 
 void CWaylandBackend::setResizing(bool resizing) {

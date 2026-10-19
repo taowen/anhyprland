@@ -514,6 +514,7 @@ void CFullscreenController::setWindowFullscreenModeClient(const PHLWINDOW window
 
     FS_HANDLER->setTargetFullscreenModeClient(window->windowTarget(), mode);
 
+    window->backend().setMaximized(mode == FSMODE_MAXIMIZED);
     window->backend().setFullscreen(mode == FSMODE_FULLSCREEN);
 }
 

@@ -251,7 +251,6 @@ CXDGToplevelResource::CXDGToplevelResource(SP<CXdgToplevel> resource_, SP<CXDGSu
     });
 
     m_resource->setSetMaximized([this](CXdgToplevel* r) {
-        // We send maximized, apps can pong it back.
         if (shouldIgnoreInitialMaximizeds())
             return;
 
@@ -261,7 +260,6 @@ CXDGToplevelResource::CXDGToplevelResource(SP<CXdgToplevel> resource_, SP<CXDGSu
     });
 
     m_resource->setUnsetMaximized([this](CXdgToplevel* r) {
-        // We send maximized, apps can pong it back.
         if (shouldIgnoreInitialMaximizeds())
             return;
 
@@ -554,10 +552,6 @@ CXDGSurfaceResource::CXDGSurfaceResource(SP<CXdgSurface> resource_, SP<CXDGWMBas
         }
 
         if (m_surface->m_current.texture && !m_mapped) {
-            // this forces apps to not draw CSD.
-            if (m_toplevel)
-                m_toplevel->setMaximized(true);
-
             m_mapped = true;
             m_surface->map();
             m_events.map.emit();
