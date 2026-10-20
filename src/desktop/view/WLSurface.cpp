@@ -132,10 +132,19 @@ CRegion CWLSurface::computeDamage(const std::optional<CBox>& box) const {
     // go from buffer coords in the damage to hl logical
     damage.scale(SURFSIZE / BUFSIZE);
 
-    if (auto window = CWindow::fromView(m_view.lock()); window && window->layoutTarget() && window->layoutTarget()->clientSize()) {
-        const auto reported = window->backend().reportedSize();
-        if (reported.x > 0 && reported.y > 0)
-            damage.scale(window->size(IGeometric::GEOMETRIC_CURRENT) / reported);
+    if (auto window = CWindow::fromView(m_view.lock()); window) {
+        if (!window->backend().isX11()) {
+            const auto GEOMETRY = window->backend().geometry().box;
+            // Match the main surface's geometry crop before applying preview
+            // scaling. Buffer damage still includes client-side shadows.
+            if (!GEOMETRY.empty() && GEOMETRY.x >= 0 && GEOMETRY.y >= 0 && GEOMETRY.x + GEOMETRY.w <= SURFSIZE.x && GEOMETRY.y + GEOMETRY.h <= SURFSIZE.y)
+                damage.translate(-GEOMETRY.pos());
+        }
+        if (window->layoutTarget() && window->layoutTarget()->clientSize()) {
+            const auto reported = window->backend().reportedSize();
+            if (reported.x > 0 && reported.y > 0)
+                damage.scale(window->size(IGeometric::GEOMETRIC_CURRENT) / reported);
+        }
     }
     if (boxSize)
         damage.intersect(CBox{{}, boxSize.value()});

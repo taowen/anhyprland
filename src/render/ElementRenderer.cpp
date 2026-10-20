@@ -88,8 +88,18 @@ void IElementRenderer::calculateUVForSurface(PHLWINDOW pWindow, SP<CWLSurfaceRes
             }
         }
 
+        const auto SURFACE_SIZE        = pSurface->m_current.size;
+        const auto GEOMETRY            = pWindow && main ? pWindow->backend().geometry().box : CBox{};
+        const bool HAS_WINDOW_GEOMETRY = !GEOMETRY.empty() && GEOMETRY.pos().x >= 0 && GEOMETRY.pos().y >= 0 && GEOMETRY.x + GEOMETRY.w <= SURFACE_SIZE.x &&
+            GEOMETRY.y + GEOMETRY.h <= SURFACE_SIZE.y && (GEOMETRY.pos() != Vector2D{} || GEOMETRY.size() != SURFACE_SIZE);
         const bool SCALED_TASK = pWindow && pWindow->layoutTarget() && pWindow->layoutTarget()->clientSize().has_value();
-        if (SCALED_TASK) {
+        if (HAS_WINDOW_GEOMETRY) {
+            // XDG window geometry excludes client-side shadows. Compose this
+            // surface-local crop with any buffer viewport before projection.
+            const auto SPAN = uvBR - uvTL;
+            uvBR            = uvTL + SPAN * ((GEOMETRY.pos() + GEOMETRY.size()) / SURFACE_SIZE);
+            uvTL += SPAN * (GEOMETRY.pos() / SURFACE_SIZE);
+        } else if (SCALED_TASK) {
             // A layout deliberately displays the full client at a smaller size.
             // Keep viewport source UVs; resizing heuristics would crop the image.
         } else if (projSize != Vector2D{} && fixMisalignedFSV1) {
@@ -137,33 +147,6 @@ void IElementRenderer::calculateUVForSurface(PHLWINDOW pWindow, SP<CWLSurfaceRes
             m_renderData.primarySurfaceUVBottomRight = Vector2D(-1, -1);
         }
 
-        if (!main || !pWindow)
-            return;
-
-        // FIXME: this doesn't work. We always set MAXIMIZED anyways, so this doesn't need to work, but it's problematic.
-
-        // CBox geom = pWindow->backend().geometry().box;
-
-        // // Adjust UV based on the xdg_surface geometry
-        // if (geom.x != 0 || geom.y != 0 || geom.w != 0 || geom.h != 0) {
-        //     const auto XPERC = geom.x / pSurface->m_current.size.x;
-        //     const auto YPERC = geom.y / pSurface->m_current.size.y;
-        //     const auto WPERC = (geom.x + geom.w ? geom.w : pSurface->m_current.size.x) / pSurface->m_current.size.x;
-        //     const auto HPERC = (geom.y + geom.h ? geom.h : pSurface->m_current.size.y) / pSurface->m_current.size.y;
-
-        //     const auto TOADDTL = Vector2D(XPERC * (uvBR.x - uvTL.x), YPERC * (uvBR.y - uvTL.y));
-        //     uvBR               = uvBR - Vector2D((1.0 - WPERC) * (uvBR.x - uvTL.x), (1.0 - HPERC) * (uvBR.y - uvTL.y));
-        //     uvTL               = uvTL + TOADDTL;
-        // }
-
-        m_renderData.primarySurfaceUVTopLeft     = uvTL;
-        m_renderData.primarySurfaceUVBottomRight = uvBR;
-
-        if (m_renderData.primarySurfaceUVTopLeft == Vector2D() && m_renderData.primarySurfaceUVBottomRight == Vector2D(1, 1)) {
-            // No special UV mods needed
-            m_renderData.primarySurfaceUVTopLeft     = Vector2D(-1, -1);
-            m_renderData.primarySurfaceUVBottomRight = Vector2D(-1, -1);
-        }
     } else {
         m_renderData.primarySurfaceUVTopLeft     = Vector2D(-1, -1);
         m_renderData.primarySurfaceUVBottomRight = Vector2D(-1, -1);
@@ -719,13 +702,13 @@ void IElementRenderer::drawTransformedWindow(WP<CTransformedWindowPassElement> e
             return in;
 
         return PWINDOW->effects().transformers()->transform(in, plan,
-                                                            SWindowTransformContext{
-                                                                .currentBox        = element->m_data.currentBox,
-                                                                .inputBox          = plan.sourceBox,
-                                                                .outputBox         = plan.outputBox,
-                                                                .monitor           = pMonitor,
-                                                                .standalone        = element->m_data.standalone,
-                                                                .renderingSnapshot = element->m_data.renderingSnapshot,
+                                                                SWindowTransformContext{
+                                                                    .currentBox        = element->m_data.currentBox,
+                                                                    .inputBox          = plan.sourceBox,
+                                                                    .outputBox         = plan.outputBox,
+                                                                    .monitor           = pMonitor,
+                                                                    .standalone        = element->m_data.standalone,
+                                                                    .renderingSnapshot = element->m_data.renderingSnapshot,
                                                             });
     };
 

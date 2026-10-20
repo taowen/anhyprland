@@ -297,7 +297,10 @@ SP<CWLSurfaceResource> CViewHitTester::windowSurfaceAt(const Vector2D& pos, PHLW
         return PPOPUP->wlSurface()->resource();
     }
 
-    auto [surf, local] = window->wlSurface()->resource()->at(pos - window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL), true);
+    // Window placement addresses XDG geometry, while wl_surface input includes
+    // the client-side shadow offset, just like surfaceLocalAt below.
+    const auto ROOT_LOCAL = pos - window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL) + window->backend().geometry().box.pos();
+    auto [surf, local] = window->wlSurface()->resource()->at(ROOT_LOCAL, true);
     if (surf) {
         surfaceLocal = local;
         return surf;
