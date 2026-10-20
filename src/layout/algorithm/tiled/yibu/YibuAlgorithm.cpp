@@ -36,6 +36,9 @@ CYibuAlgorithm::CYibuAlgorithm() {
             auto target = window->layoutTarget();
             if (std::ranges::any_of(m_tasks, [&](const auto& t) { return t.lock() == target; }))
                 select(target);
+            controls();
+            if (auto monitor = m_parent->space()->workspace()->m_monitor.lock())
+                g_pHyprRenderer->damageMonitor(monitor);
         }
     });
 }
@@ -230,7 +233,7 @@ void CYibuAlgorithm::controls() {
     add(tasks, "Tasks", 7, 0, CONTROL_BUTTON, m_taskMenu);
     // One chip per business window, without application grouping. Floating
     // document/tool dialogs participate without becoming tiled layout targets.
-    double x0 = area.x + 134 * u, x1 = apps.x - 14 * u;
+    double     x0 = area.x + 134 * u, x1 = apps.x - 14 * u;
     const bool overflow = live.size() * 120. * u > x1 - x0;
     if (overflow) {
         x0 += 36 * u;
@@ -291,6 +294,37 @@ std::vector<PHLWINDOW> CYibuAlgorithm::tabWindows() const {
     // Raising/focusing a window must not move its tab under the user's pointer.
     std::ranges::sort(result, {}, [](const auto& window) { return window->metadata().stableID(); });
     return result;
+}
+
+static PHLWINDOW windowRoot(PHLWINDOW window) {
+    for (size_t depth = 0; window && depth < 32; ++depth) {
+        auto parent = window->backend().parent();
+        if (!parent)
+            return window;
+        window = parent;
+    }
+    return nullptr;
+}
+
+bool CYibuAlgorithm::windowVisible(PHLWINDOW window) const {
+    if (!window || !m_parent || window->m_workspace != m_parent->space()->workspace())
+        return true;
+    auto root = windowRoot(window);
+    if (!root)
+        return false;
+    // Fixed-size independent windows are floating targets, not dialogs of the
+    // currently selected document. Keep them switchable without overlaying it.
+    if (!root->isFloating() || (root->m_state & Desktop::View::WINDOW_STATE_PINNED))
+        return true;
+    const auto traits = root->backend().traits();
+    if (traits.overrideRedirect || traits.preventsFocus || !traits.wantsFocus)
+        return true;
+    auto selected = Desktop::focusState()->window();
+    if (!selected || selected->m_workspace != window->m_workspace) {
+        auto main = m_main.lock();
+        selected  = main ? main->window() : nullptr;
+    }
+    return !selected || root == windowRoot(selected);
 }
 
 PHLWINDOW CYibuAlgorithm::activeTab(const std::vector<PHLWINDOW>& windows) const {

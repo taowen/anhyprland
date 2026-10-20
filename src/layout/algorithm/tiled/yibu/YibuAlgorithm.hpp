@@ -31,6 +31,7 @@ namespace Layout::Tiled {
         bool                    pointer(double x, double y, uint32_t button, bool pressed);
         static CYibuAlgorithm*  active();
         bool                    hasFullscreenControls(PHLMONITOR monitor) const;
+        bool                    windowVisible(PHLWINDOW window) const;
         void                    render(PHLMONITOR monitor, bool background = false);
 
       private:

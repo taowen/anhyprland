@@ -22,6 +22,7 @@
 #include "WindowGroupMembership.hpp"
 #include "WindowMetadata.hpp"
 #include "WindowPresentation.hpp"
+#include "../../../layout/algorithm/tiled/yibu/YibuAlgorithm.hpp"
 #include "WindowSwallowController.hpp"
 #include "../LayerSurface.hpp"
 #include "../Popup.hpp"
@@ -228,7 +229,8 @@ bool CWindow::mapped() const {
 }
 
 bool CWindow::focusAvailable() const {
-    return !isHidden() && layoutOwnerActive();
+    auto yibu = Layout::Tiled::CYibuAlgorithm::active();
+    return !isHidden() && layoutOwnerActive() && (!yibu || yibu->windowVisible(m_self.lock()));
 }
 
 bool CWindow::layoutOwnerActive() const {
@@ -1524,8 +1526,8 @@ void CWindow::mapWindow() {
             Fullscreen::controller()->setFullscreenMode(Fullscreen::controller()->getFullscreenWindow(m_workspace), Fullscreen::FSMODE_NONE, std::nullopt);
     }
 
-    if (!m_ruleApplicator->noFocus().valueOrDefault() && !(m_state & WINDOW_STATE_NO_INITIAL_FOCUS) && (!TRAITS.overrideRedirect || TRAITS.wantsFocus) && !workspaceSilent &&
-        !monitorSilent && (!PFORCEFOCUS || PFORCEFOCUS == m_self.lock()) && !g_pInputManager->isConstrained()) {
+    if (focusAvailable() && !m_ruleApplicator->noFocus().valueOrDefault() && !(m_state & WINDOW_STATE_NO_INITIAL_FOCUS) && (!TRAITS.overrideRedirect || TRAITS.wantsFocus) &&
+        !workspaceSilent && !monitorSilent && (!PFORCEFOCUS || PFORCEFOCUS == m_self.lock()) && !g_pInputManager->isConstrained()) {
 
         // don't steal pointer focus with X11 when buttons are held (e.g., during drags)
         // if the incoming window is an OR

@@ -81,6 +81,7 @@ namespace Desktop::View {
         void                                              applyAnimateIn() const;
 
       private:
+        bool                                       layoutVisible() const;
         void                                       addDecorationInternal(const SP<IHyprWindowDecoration>& decoration);
 
         CWindow&                                   m_window;

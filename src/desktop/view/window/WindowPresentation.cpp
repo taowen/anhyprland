@@ -5,6 +5,7 @@
 #include "../../../config/ConfigValue.hpp"
 #include "../../../config/shared/animation/AnimationTree.hpp"
 #include "../../../layout/target/Target.hpp"
+#include "../../../layout/algorithm/tiled/yibu/YibuAlgorithm.hpp"
 #include "../../../managers/fullscreen/FullscreenController.hpp"
 #include "../../../output/Monitor.hpp"
 #include "../../../protocols/core/Compositor.hpp"
@@ -191,24 +192,31 @@ const PHLANIMVAR<float>& CWindowPresentation::alpha(eWindowAlpha type) const {
     return m_alpha.get(type);
 }
 
+bool CWindowPresentation::layoutVisible() const {
+    if (!m_window.layoutOwnerActive())
+        return false;
+    auto yibu = Layout::Tiled::CYibuAlgorithm::active();
+    return !yibu || yibu->windowVisible(m_window.m_self.lock());
+}
+
 float CWindowPresentation::alphaValue(eWindowAlpha type) const {
-    if (type == WINDOW_ALPHA_LAYOUT && !m_window.layoutOwnerActive())
+    if (type == WINDOW_ALPHA_LAYOUT && !layoutVisible())
         return 0.F;
     return alpha(type)->value();
 }
 
 float CWindowPresentation::alphaGoal(eWindowAlpha type) const {
-    if (type == WINDOW_ALPHA_LAYOUT && !m_window.layoutOwnerActive())
+    if (type == WINDOW_ALPHA_LAYOUT && !layoutVisible())
         return 0.F;
     return alpha(type)->goal();
 }
 
 float CWindowPresentation::alphaTotal() const {
-    return m_window.layoutOwnerActive() ? m_alpha.getTotal() : 0.F;
+    return layoutVisible() ? m_alpha.getTotal() : 0.F;
 }
 
 float CWindowPresentation::alphaTotalGoal() const {
-    return m_window.layoutOwnerActive() ? m_alpha.getTotalGoal() : 0.F;
+    return layoutVisible() ? m_alpha.getTotalGoal() : 0.F;
 }
 
 int CWindowPresentation::borderSize() const {
