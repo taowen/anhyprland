@@ -16,9 +16,22 @@ using namespace Layout::Floating;
 
 constexpr const Vector2D DEFAULT_SIZE = {640, 400};
 
+static CBox              floatingPlacementArea(SP<CSpace> space, SP<ITarget> target) {
+    auto area = space->workArea(true);
+    if (const auto window = target->window(); window && !window->backend().traits().overrideRedirect) {
+        const auto parent = window->backend().parent();
+        if (parent && parent->mapped() && parent->layoutTarget() && !parent->layoutTarget()->floating()) {
+            const auto parentArea = area.intersection(parent->geometricBox(Desktop::View::IGeometric::GEOMETRIC_GOAL));
+            if (!parentArea.empty())
+                area = parentArea;
+        }
+    }
+    return area;
+}
+
 //
 void CDefaultFloatingAlgorithm::newTarget(SP<ITarget> target) {
-    const auto WORK_AREA    = m_parent->space()->workArea(true);
+    const auto WORK_AREA    = floatingPlacementArea(m_parent->space(), target);
     const auto DESIRED_GEOM = target->desiredGeometry();
     const auto MONITOR_POS  = m_parent->space()->workspace()->m_monitor->logicalBox().pos();
 
@@ -182,11 +195,15 @@ void CDefaultFloatingAlgorithm::movedTarget(SP<ITarget> target, std::optional<Ve
 }
 
 CBox CDefaultFloatingAlgorithm::fitBoxInWorkArea(const CBox& box, SP<ITarget> t, bool fully) {
-    const auto WORK_AREA = m_parent->space()->workArea(true);
+    const auto WORK_AREA = floatingPlacementArea(m_parent->space(), t);
     const auto EXTENTS   = t->window() ? t->window()->getWindowExtentsUnified(Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS) : SBoxExtents{};
     CBox       targetBox = box.copy().addExtents(EXTENTS);
 
     if (fully) {
+        // Position-only fitting pushes an oversized dialog's controls offscreen.
+        // Constrain its configured client size before fitting the decorated box.
+        targetBox.w = std::min(targetBox.w, WORK_AREA.w);
+        targetBox.h = std::min(targetBox.h, WORK_AREA.h);
         targetBox.x = std::max(targetBox.x, WORK_AREA.x);
         targetBox.y = std::max(targetBox.y, WORK_AREA.y);
 

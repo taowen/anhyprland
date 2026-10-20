@@ -299,7 +299,10 @@ void CWaylandBackend::configure(const CBox& logicalBox, PHLMONITOR preferredMoni
 
     const auto CLIENT_BOX = logicalToClient(logicalBox, preferredMonitor);
     const auto WINDOW     = m_window.lock();
-    TOPLEVEL->setTiled(WINDOW && !WINDOW->isFloating());
+    // Initial configure precedes layout assignment. In particular, a transient
+    // dialog has not been classified as floating yet; advertising tiled edges
+    // here makes clients restore their saved size when those edges disappear.
+    TOPLEVEL->setTiled(WINDOW && WINDOW->mapped() && !WINDOW->isFloating());
     if (!force && m_pendingReportedSize == CLIENT_BOX.size())
         return;
 
