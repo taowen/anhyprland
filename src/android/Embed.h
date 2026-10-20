@@ -23,6 +23,8 @@ int  anhyprland_relative_pointer(float dx, float dy, int button, int pressed);
 int  anhyprland_open_apps(void);
 int  anhyprland_cursor_shape(void);
 void anhyprland_report_cursor_shape(uint32_t shape);
+int  anhyprland_pointer_locked(void);
+void anhyprland_report_pointer_lock(int acquired);
 int  anhyprland_axis(float dx, float dy);
 // Touch contacts in output pixels: 0=down, 1=up, 2=move, 3=cancel.
 int anhyprland_touch(int id, int action, float x, float y);

@@ -7,6 +7,9 @@
 #include "../managers/input/InputManager.hpp"
 #include "../render/Renderer.hpp"
 #include "../output/Monitor.hpp"
+#ifdef __ANDROID__
+#include "../android/Embed.h"
+#endif
 
 CPointerConstraint::CPointerConstraint(SP<CZwpLockedPointerV1> resource_, SP<CWLSurfaceResource> surf, wl_resource* region_, zwpPointerConstraintsV1Lifetime lifetime_) :
     m_resourceLocked(resource_), m_locked(true), m_lifetime(lifetime_) {
@@ -64,6 +67,10 @@ CPointerConstraint::CPointerConstraint(SP<CZwpConfinedPointerV1> resource_, SP<C
 }
 
 CPointerConstraint::~CPointerConstraint() {
+#ifdef __ANDROID__
+    if (m_active && m_locked)
+        anhyprland_report_pointer_lock(0);
+#endif
     std::erase_if(g_pInputManager->m_constraints, [this](const auto& c) {
         const auto SHP = c.lock();
         return !SHP || SHP.get() == this;
@@ -104,6 +111,10 @@ void CPointerConstraint::deactivate() {
         m_resourceConfined->sendUnconfined();
 
     m_active = false;
+#ifdef __ANDROID__
+    if (m_locked)
+        anhyprland_report_pointer_lock(0);
+#endif
 
     if (m_lifetime == ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_ONESHOT) {
         m_dead = true;
@@ -134,6 +145,10 @@ void CPointerConstraint::activate() {
         m_resourceConfined->sendConfined();
 
     m_active = true;
+#ifdef __ANDROID__
+    if (m_locked)
+        anhyprland_report_pointer_lock(1);
+#endif
 
     g_pInputManager->simulateMouseMovement();
 }

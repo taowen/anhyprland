@@ -22,6 +22,7 @@ struct SEmbedState {
     int                               eventFd     = -1;
     bool                              used        = false;
     std::atomic_uint32_t              cursorShape = 1;
+    std::atomic_int                   pointerLocks = 0;
 };
 
 static SEmbedState                     embed;
@@ -190,6 +191,12 @@ extern "C" int anhyprland_relative_pointer(float dx, float dy, int button, int p
 }
 extern "C" int anhyprland_cursor_shape() {
     return sc<int>(embed.cursorShape.load(std::memory_order_relaxed));
+}
+extern "C" int anhyprland_pointer_locked() {
+    return embed.pointerLocks.load(std::memory_order_relaxed) > 0;
+}
+extern "C" void anhyprland_report_pointer_lock(int acquired) {
+    embed.pointerLocks.fetch_add(acquired ? 1 : -1, std::memory_order_relaxed);
 }
 extern "C" void anhyprland_report_cursor_shape(uint32_t shape) {
     embed.cursorShape.store(shape > 0 ? shape : 1, std::memory_order_relaxed);
