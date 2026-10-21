@@ -14,6 +14,7 @@
 #include "../../../desktop/state/WindowState.hpp"
 
 #include "../../../layout/algorithm/Algorithm.hpp"
+#include "../../../layout/algorithm/TiledAlgorithm.hpp"
 #include "../../../layout/target/Target.hpp"
 #include "../../../layout/target/WindowGroupTarget.hpp"
 #include "../../../layout/target/WindowTarget.hpp"
@@ -203,6 +204,17 @@ void IFullscreenHandler::setTargetSizeAndPosition(const SP<Layout::ITarget> targ
 
     // must set pos of the highest level target (i.e. if target a part of a group, must set that group's pos which will set the pos of all member targets)
     const auto LAYOUT_TARGET = target->window()->layoutTarget();
+
+    if (!target->floating() && WORKSPACE->space()->algorithm()->tiledAlgo()->fitsConstrainedClients()) {
+        const CBox   area   = TARGET_INTERNAL_MODE == FSMODE_FULLSCREEN ? MONITOR->logicalBox() : WORKSPACE->space()->workArea();
+        const auto   client = target->clampSizeForDesired(area.size());
+        const double fit    = std::min(area.w / client.x, area.h / client.y);
+        const CBox   box{area.pos() + (area.size() - client * fit) / 2., client * fit};
+        Fullscreen::controller()->m_windowPosSettingQueued = true;
+        LAYOUT_TARGET->setPositionGlobal(Layout::STargetBox{.logicalBox = box, .visualBox = box, .clientSize = client});
+        Fullscreen::controller()->m_windowPosSettingQueued = false;
+        return;
+    }
 
     if (TARGET_INTERNAL_MODE == FSMODE_FULLSCREEN) {
         const CBox MONBOX                                  = MONITOR->logicalBox();

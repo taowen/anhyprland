@@ -55,10 +55,11 @@ CBox CSurfacePassElement::getTexBox() {
 
         const auto SURFSIZE = m_data.surface->m_current.size;
 
-        windowBox = {sc<int>(outputX) + m_data.pos.x + m_data.localPos.x, sc<int>(outputY) + m_data.pos.y + m_data.localPos.y, std::max(sc<float>(SURFSIZE.x), 2.F),
-                     std::max(sc<float>(SURFSIZE.y), 2.F)};
+        windowBox             = {sc<int>(outputX) + m_data.pos.x + m_data.localPos.x, sc<int>(outputY) + m_data.pos.y + m_data.localPos.y, std::max(sc<float>(SURFSIZE.x), 2.F),
+                                 std::max(sc<float>(SURFSIZE.y), 2.F)};
         const bool scaledTask = m_data.pWindow && m_data.pWindow->layoutTarget() && m_data.pWindow->layoutTarget()->clientSize().has_value();
-        if (m_data.pWindow && (m_data.pWindow->sizeAnimation()->isBeingAnimated() || scaledTask) && m_data.surface && !m_data.mainSurface && m_data.squishOversized /* subsurface */) {
+        if (m_data.pWindow && (m_data.pWindow->sizeAnimation()->isBeingAnimated() || scaledTask) && m_data.surface && !m_data.mainSurface &&
+            m_data.squishOversized /* subsurface */) {
             // adjust subsurfaces to the window
             const auto REPORTED = m_data.pWindow->backend().reportedSize();
             if (REPORTED.x != 0 && REPORTED.y != 0) {
@@ -179,7 +180,7 @@ CRegion CSurfacePassElement::visibleRegion(bool& cancel) {
     texBox.round();
 
     visibleRegion.scale((Vector2D(1, 1) / (uvBR - uvTL)) * (texBox.size() / bufferSize));
-    visibleRegion.translate((m_data.pos + m_data.localPos - m_data.pMonitor->m_position) * m_data.pMonitor->m_scale);
+    visibleRegion.translate(texBox.pos());
 
     return visibleRegion;
 }

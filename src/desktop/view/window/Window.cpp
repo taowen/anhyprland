@@ -62,6 +62,7 @@
 #include "../../../pointer/PointerController.hpp"
 #include "../../../managers/fullscreen/FullscreenController.hpp"
 #include "../../../layout/algorithm/Algorithm.hpp"
+#include "../../../layout/algorithm/TiledAlgorithm.hpp"
 #include "../../../layout/space/Space.hpp"
 #include "../../../layout/LayoutManager.hpp"
 #include "../../../layout/target/WindowTarget.hpp"
@@ -1051,14 +1052,16 @@ bool CWindow::suggestsFloat(bool pending) const {
     if (m_backend->traits().suggestsFloat)
         return true;
 
-    if (m_backend->isX11())
+    if (m_workspace && m_workspace->space()->algorithm()->tiledAlgo()->fitsConstrainedClients())
         return false;
 
     const auto HINTS = m_backend->geometryHints(pending ? eBackendState::BACKEND_STATE_PENDING : eBackendState::BACKEND_STATE_CURRENT);
     if (!HINTS.minSize || !HINTS.maxSize || HINTS.minSize->x <= 1 || HINTS.minSize->y <= 1)
         return false;
 
-    return HINTS.minSize->x == HINTS.maxSize->x || HINTS.minSize->y == HINTS.maxSize->y;
+    const bool fixedWidth  = HINTS.minSize->x == HINTS.maxSize->x;
+    const bool fixedHeight = HINTS.minSize->y == HINTS.maxSize->y;
+    return m_backend->isX11() ? fixedWidth && fixedHeight : fixedWidth || fixedHeight;
 }
 
 void CWindow::acknowledgeClientGeometry(const CBox& logicalBox) {

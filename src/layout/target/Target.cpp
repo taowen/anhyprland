@@ -8,10 +8,20 @@
 using namespace Layout;
 using namespace Hyprutils::Utils;
 
+Vector2D ITarget::clampSizeForDesired(const Vector2D& size) {
+    Vector2D result = size;
+    if (const auto minimum = minSize())
+        result = result.clamp(*minimum);
+    if (const auto maximum = maxSize())
+        result = result.clamp(Vector2D{MIN_WINDOW_SIZE, MIN_WINDOW_SIZE}, *maximum);
+    return result;
+}
+
 std::optional<Vector2D> ITarget::clientSize() {
-    // Configure, texture projection and damage must agree on whether this is
-    // a scaled layout preview. The stored tiled box survives fullscreen/float.
-    if (floating() || (window() && Fullscreen::controller()->isFullscreen(window())))
+    // Configure, projection, input and damage share the explicit client size.
+    // Fullscreen handlers replace the target box, so stale tiled sizing cannot
+    // leak into fullscreen; a handler may explicitly request a fitted client.
+    if (floating())
         return std::nullopt;
     return m_box.clientSize;
 }

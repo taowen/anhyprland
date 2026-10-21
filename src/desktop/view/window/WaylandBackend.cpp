@@ -28,14 +28,11 @@ static SBackendTraits traitsFrom(const SP<CXDGToplevelResource>& toplevel) {
     if (!toplevel)
         return {};
 
-    const bool FIXED_SIZE = toplevel->m_current.minSize.x != 0 && toplevel->m_current.minSize.y != 0 &&
-        (toplevel->m_current.minSize.x == toplevel->m_current.maxSize.x || toplevel->m_current.minSize.y == toplevel->m_current.maxSize.y);
-
     return {
         .modal         = toplevel->m_dialog && toplevel->m_dialog->modal,
         .hasModalChild = toplevel->anyChildModal(),
         .transient     = !!toplevel->m_parent,
-        .suggestsFloat = toplevel->m_parent || FIXED_SIZE,
+        .suggestsFloat = !!toplevel->m_parent,
     };
 }
 

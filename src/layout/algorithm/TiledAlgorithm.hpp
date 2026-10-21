@@ -19,6 +19,17 @@ namespace Layout {
 
         virtual SP<ITarget> getNextCandidate(SP<ITarget> old) = 0;
 
+        // Tabbed layouts may require explicit activation, including for floating
+        // windows above the selected tile. Pointer motion must not select a tab.
+        virtual bool allowsFocusOnPointerMove() const {
+            return true;
+        }
+
+        // Slot layouts fit constrained clients rather than floating them.
+        virtual bool fitsConstrainedClients() const {
+            return false;
+        }
+
         // Optional runtime layout name. Useful for generic adapter classes where
         // typeid alone cannot identify the selected layout instance.
         virtual std::optional<std::string> layoutName() const {

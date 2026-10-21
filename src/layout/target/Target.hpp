@@ -48,6 +48,7 @@ namespace Layout {
         void                                                        setPositionGlobal(const CBox& box, uint8_t flags = TARGET_UPDATE_NONE);
         virtual CBox                                                position() const;
         std::optional<Vector2D>                                     clientSize();
+        Vector2D                                                    clampSizeForDesired(const Vector2D& size);
         virtual void                                                assignToSpace(const SP<CSpace>& space, std::optional<Vector2D> focalPoint = std::nullopt);
         virtual void                                                setSpaceGhost(const SP<CSpace>& space);
         virtual SP<CSpace>                                          space() const;

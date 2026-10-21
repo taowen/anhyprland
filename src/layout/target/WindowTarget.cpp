@@ -306,15 +306,6 @@ void CWindowTarget::setCantLockCursor(bool x) {
     m_cantLockCursor = x;
 }
 
-Vector2D CWindowTarget::clampSizeForDesired(const Vector2D& size) {
-    Vector2D newSize = size;
-    if (const auto m = minSize(); m)
-        newSize = newSize.clamp(*m);
-    if (const auto m = maxSize(); m)
-        newSize = newSize.clamp(Vector2D{MIN_WINDOW_SIZE, MIN_WINDOW_SIZE}, *m);
-    return newSize;
-}
-
 std::expected<SGeometryRequested, eGeometryFailure> CWindowTarget::desiredGeometry() {
 
     SGeometryRequested requested;

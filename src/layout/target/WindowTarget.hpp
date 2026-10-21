@@ -42,7 +42,6 @@ namespace Layout {
         CWindowTarget(PHLWINDOW w);
 
         std::optional<double> calculateSingleExpr(const std::string& s);
-        Vector2D              clampSizeForDesired(const Vector2D& size);
 
         void                  updatePos(uint8_t flags = TARGET_UPDATE_NONE);
 

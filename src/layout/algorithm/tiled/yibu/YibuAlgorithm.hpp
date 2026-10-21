@@ -18,6 +18,12 @@ namespace Layout::Tiled {
       public:
         CYibuAlgorithm();
         ~CYibuAlgorithm() override;
+        bool allowsFocusOnPointerMove() const override {
+            return false;
+        }
+        bool fitsConstrainedClients() const override {
+            return true;
+        }
         void                    newTarget(SP<ITarget>) override;
         void                    movedTarget(SP<ITarget>, std::optional<Vector2D> = std::nullopt) override;
         void                    removeTarget(SP<ITarget>) override;
@@ -49,7 +55,7 @@ namespace Layout::Tiled {
         std::array<CBox, 3>        m_boxes;
         std::array<CBox, 3>        m_fitted;
         CBox                       m_mainBox, m_menuBox;
-        bool                       m_enabled = true, m_left = false, m_arranging = false;
+        bool                       m_left = false, m_arranging = false;
         int                        m_toolbarPixels = 200, m_pressedSlot = -1, m_hoverControl = -1;
         size_t                     m_tabFirst = 0, m_tabCapacity = 1;
         bool                       m_revealActiveTab = true;

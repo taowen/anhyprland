@@ -80,9 +80,6 @@ static SBackendTraits traitsFrom(const SP<CXWaylandSurface>& surface) {
     NO_BORDER_ATOM = hasAnyAtom(surface, NO_BORDER_ATOMS);
 #endif
 
-    const auto HINTS      = surface->m_sizeHints.get();
-    const bool FIXED_SIZE = HINTS && HINTS->min_width > 0 && HINTS->min_height > 0 && HINTS->max_width > 0 && HINTS->max_height > 0 && HINTS->min_width == HINTS->max_width &&
-        HINTS->min_height == HINTS->max_height;
     const bool ROLE_FLOATS     = surface->m_role.contains("task_dialog") || surface->m_role.contains("pop-up");
     const bool HAS_MODAL_CHILD = std::ranges::any_of(surface->m_children, [](const auto& child) { return child && child->m_modal; });
 
@@ -93,7 +90,7 @@ static SBackendTraits traitsFrom(const SP<CXWaylandSurface>& surface) {
         .hasModalChild          = HAS_MODAL_CHILD,
         .transient              = surface->m_transient,
         .wantsFocus             = surface->wantsFocus(),
-        .suggestsFloat          = FLOATING_ATOM || surface->m_modal || surface->m_transient || ROLE_FLOATS || surface->m_overrideRedirect || surface->m_parent || FIXED_SIZE,
+        .suggestsFloat          = FLOATING_ATOM || surface->m_modal || surface->m_transient || ROLE_FLOATS || surface->m_overrideRedirect || surface->m_parent,
         .suggestsNoInitialFocus = NO_INITIAL_FOCUS_ATOM,
         .preventsFocus          = PREVENTS_FOCUS_ATOM,
         .suggestsNoBorder       = NO_BORDER_ATOM || surface->m_overrideRedirect,
@@ -129,8 +126,8 @@ static bool metadataEqual(const SBackendMetadata& lhs, const SBackendMetadata& r
 }
 
 static bool traitsEqual(const SBackendTraits& lhs, const SBackendTraits& rhs) {
-    return lhs.overrideRedirect == rhs.overrideRedirect && lhs.belowParent == rhs.belowParent && lhs.modal == rhs.modal && lhs.hasModalChild == rhs.hasModalChild && lhs.transient == rhs.transient &&
-        lhs.wantsFocus == rhs.wantsFocus && lhs.suggestsFloat == rhs.suggestsFloat && lhs.suggestsNoInitialFocus == rhs.suggestsNoInitialFocus &&
+    return lhs.overrideRedirect == rhs.overrideRedirect && lhs.belowParent == rhs.belowParent && lhs.modal == rhs.modal && lhs.hasModalChild == rhs.hasModalChild &&
+        lhs.transient == rhs.transient && lhs.wantsFocus == rhs.wantsFocus && lhs.suggestsFloat == rhs.suggestsFloat && lhs.suggestsNoInitialFocus == rhs.suggestsNoInitialFocus &&
         lhs.preventsFocus == rhs.preventsFocus && lhs.suggestsNoBorder == rhs.suggestsNoBorder && lhs.fullscreen == rhs.fullscreen;
 }
 
@@ -192,9 +189,9 @@ CX11Backend::CX11Backend(SP<CXWaylandSurface> surface) : m_xwaylandSurface(surfa
             return;
 
         const SBackendStateRequest REQUEST = {
-            .fullscreen = SURFACE->m_state.requestsFullscreen,
-            .maximized  = SURFACE->m_state.requestsMaximize,
-            .minimized  = SURFACE->m_state.requestsMinimize,
+                     .fullscreen = SURFACE->m_state.requestsFullscreen,
+                     .maximized  = SURFACE->m_state.requestsMaximize,
+                     .minimized  = SURFACE->m_state.requestsMinimize,
         };
 
         SURFACE->m_state.requestsFullscreen.reset();

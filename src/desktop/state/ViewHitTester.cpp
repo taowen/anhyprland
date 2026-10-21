@@ -6,6 +6,7 @@
 #include "../view/window/Window.hpp"
 #include "../../config/ConfigValue.hpp"
 #include "../../layout/space/Space.hpp"
+#include "../../layout/target/Target.hpp"
 #include "../../macros.hpp"
 #include "../../protocols/LayerShell.hpp"
 #include "../../protocols/core/Compositor.hpp"
@@ -68,7 +69,7 @@ PHLWINDOW CViewHitTester::windowAtInternal(const Vector2D& pos, uint16_t propert
         return SURFACE->m_current.effectiveInputRegion().containsPoint(LOCAL);
     };
 
-    const auto  isShadowedByModal = [](PHLWINDOW w) -> bool { return *PMODALPARENTBLOCKING && !w->backend().isX11() && w->backend().traits().hasModalChild; };
+    const auto isShadowedByModal = [](PHLWINDOW w) -> bool { return *PMODALPARENTBLOCKING && !w->backend().isX11() && w->backend().traits().hasModalChild; };
 
     // pinned windows on top of floating regardless
     if (properties & ALLOW_FLOATING) {
@@ -282,6 +283,17 @@ PHLWINDOW CViewHitTester::windowAtInternal(const Vector2D& pos, uint16_t propert
     return windowForWorkspace(false);
 }
 
+static Vector2D windowClientLocal(const Vector2D& pos, PHLWINDOW window) {
+    auto local = pos - window->position(IGeometric::GEOMETRIC_CURRENT);
+    if (window->layoutTarget() && window->layoutTarget()->clientSize()) {
+        const auto visual = window->size(IGeometric::GEOMETRIC_CURRENT);
+        const auto client = window->backend().reportedSize();
+        if (visual.x > 0 && visual.y > 0 && client.x > 0 && client.y > 0)
+            local *= client / visual;
+    }
+    return local;
+}
+
 SP<CWLSurfaceResource> CViewHitTester::windowSurfaceAt(const Vector2D& pos, PHLWINDOW window, Vector2D& surfaceLocal) const {
     if (!validMapped(window))
         return nullptr;
@@ -299,8 +311,8 @@ SP<CWLSurfaceResource> CViewHitTester::windowSurfaceAt(const Vector2D& pos, PHLW
 
     // Window placement addresses XDG geometry, while wl_surface input includes
     // the client-side shadow offset, just like surfaceLocalAt below.
-    const auto ROOT_LOCAL = pos - window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL) + window->backend().geometry().box.pos();
-    auto [surf, local] = window->wlSurface()->resource()->at(ROOT_LOCAL, true);
+    const auto ROOT_LOCAL = windowClientLocal(pos, window) + window->backend().geometry().box.pos();
+    auto [surf, local]    = window->wlSurface()->resource()->at(ROOT_LOCAL, true);
     if (surf) {
         surfaceLocal = local;
         return surf;
@@ -314,7 +326,7 @@ Vector2D CViewHitTester::surfaceLocalAt(const Vector2D& pos, PHLWINDOW window, S
         return {};
 
     if (window->backend().isX11())
-        return pos - window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL);
+        return windowClientLocal(pos, window);
 
     const auto PPOPUP = window->popupHead()->at(pos);
     if (PPOPUP)
@@ -333,9 +345,9 @@ Vector2D CViewHitTester::surfaceLocalAt(const Vector2D& pos, PHLWINDOW window, S
     const CBox GEOMETRY = window->backend().geometry().box;
 
     if (std::get<1>(iterData) == Vector2D{-1337, -1337})
-        return pos - window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL);
+        return windowClientLocal(pos, window);
 
-    return pos - window->position(Desktop::View::IGeometric::GEOMETRIC_GOAL) - std::get<1>(iterData) + GEOMETRY.pos();
+    return windowClientLocal(pos, window) - std::get<1>(iterData) + GEOMETRY.pos();
 }
 
 SP<CWLSurfaceResource> CViewHitTester::layerPopupSurfaceAt(const Vector2D& pos, PHLMONITOR monitor, Vector2D* surfaceCoords, PHLLS* layerFound) const {

@@ -143,24 +143,26 @@ void CYibuAlgorithm::recalculate(eRecalculateReason) {
     auto   area    = m_parent->space()->workArea();
     auto   monitor = m_parent->space()->workspace()->m_monitor.lock();
     double u = unit(), gap = std::max(4., area.w / 200.), rail = area.w / 4.;
-    double toolbar = m_enabled ? BAR * u : 0.;
-    m_mainBox      = {area.x + (m_enabled && m_left ? rail + gap : gap), area.y + toolbar + gap, area.w - (m_enabled ? rail : 0.) - 3. * gap, area.h - toolbar - 2. * gap};
-    if (!m_enabled)
-        m_mainBox = area;
-    double cell = (area.h - toolbar - 4. * gap) / 3.;
+    double toolbar = BAR * u;
+    m_mainBox      = {area.x + (m_left ? rail + gap : gap), area.y + toolbar + gap, area.w - rail - 3. * gap, area.h - toolbar - 2. * gap};
+    double cell    = (area.h - toolbar - 4. * gap) / 3.;
     for (int i = 0; i < 3; ++i)
         m_boxes[i] = {area.x + (m_left ? gap : area.w - rail), area.y + toolbar + gap + i * (cell + gap), rail - gap, cell};
     for (auto& weak : m_tasks) {
         auto target = weak.lock();
         if (!target || !target->window())
             continue;
-        auto window  = target->window();
+        auto window = target->window();
+        if (Fullscreen::controller()->isFullscreen(window))
+            continue;
         int  index   = slot(target);
         bool main    = target == m_main.lock();
-        bool visible = main || (m_enabled && index >= 0);
+        bool visible = main || index >= 0;
         window->setInputBlocked(Desktop::View::FOCUS_BLOCK_YIBU_INACTIVE, !main);
         *window->presentation().alpha(Desktop::View::WINDOW_ALPHA_LAYOUT) = visible ? 1.F : 0.F;
-        CBox box                                                          = m_mainBox;
+        const Vector2D clientSize                                         = target->clampSizeForDesired(m_mainBox.size());
+        const double   mainFit                                            = std::min(m_mainBox.w / clientSize.x, m_mainBox.h / clientSize.y);
+        CBox           box{m_mainBox.pos() + (m_mainBox.size() - clientSize * mainFit) / 2., clientSize * mainFit};
         if (!main && index >= 0) {
             // Live task below the card header, scaled to fit without reflowing the client.
             CBox     content{m_boxes[index].x, m_boxes[index].y + HEADER * u, m_boxes[index].w, m_boxes[index].h - HEADER * u};
@@ -171,7 +173,7 @@ void CYibuAlgorithm::recalculate(eRecalculateReason) {
         }
         // Surface rendering follows visual geometry; configure the client at a
         // stable main-task size. Normal layouts leave clientSize unset.
-        target->setPositionGlobal(STargetBox{.logicalBox = box, .visualBox = box, .clientSize = m_mainBox.size()});
+        target->setPositionGlobal(STargetBox{.logicalBox = box, .visualBox = box, .clientSize = clientSize});
         target->warpPositionSize();
     }
     m_arranging = false;
@@ -213,7 +215,7 @@ void CYibuAlgorithm::controls() {
         selected && focused && focused->mapped() && focused->m_workspace == m_parent->space()->workspace() && focused->backend().traits().modal)
         closeWindow = focused;
     bool canClose = bool(closeWindow);
-    if (!m_enabled || coveredByFullscreen()) {
+    if (coveredByFullscreen()) {
         double right = area.x + area.w - 10 * u;
         if (m_fullscreenControlsVisible)
             add({right - 40 * u, area.y + 10 * u, 40 * u, 40 * u}, "", 1, 0, CONTROL_FLOAT);
@@ -223,7 +225,7 @@ void CYibuAlgorithm::controls() {
     if (canClose) {
         add({right - 40 * u, y, 40 * u, h}, "", 8, closeWindow->metadata().stableID(), CONTROL_CLOSE);
         right -= 48 * u;
-        add({right - 40 * u, y, 40 * u, h}, "", 0, 0, CONTROL_BUTTON);
+        add({right - 40 * u, y, 40 * u, h}, "", 0, closeWindow->metadata().stableID(), CONTROL_BUTTON);
         right -= 48 * u;
     }
     CBox tasks{right - 98 * u, y, 98 * u, h};
@@ -387,7 +389,7 @@ bool CYibuAlgorithm::coveredByFullscreen() const {
 }
 
 bool CYibuAlgorithm::hasFullscreenControls(PHLMONITOR monitor) const {
-    return m_parent && m_parent->space()->workspace()->m_monitor.lock() == monitor && m_fullscreenControlsVisible && (!m_enabled || coveredByFullscreen());
+    return m_parent && m_parent->space()->workspace()->m_monitor.lock() == monitor && m_fullscreenControlsVisible && coveredByFullscreen();
 }
 
 void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
@@ -479,7 +481,7 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
     // The empty desktop is wallpaper, not an overlay over unmanaged X11
     // windows (splash screens, menus and native presentation surfaces).
     if (background) {
-        if (m_enabled && !coveredByFullscreen() && !m_main.lock()) {
+        if (!coveredByFullscreen() && !m_main.lock()) {
             auto box = m_mainBox;
             rect(box, COLOR_SLOT, 16 * u);
             label("No task in the main area", {box.x, box.y + box.h / 2. - 44 * u, box.w, 40 * u}, COLOR_TEXT, 22, 600, true);
@@ -487,7 +489,7 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
         }
         return;
     }
-    if (m_enabled && !coveredByFullscreen()) {
+    if (!coveredByFullscreen()) {
         rect({area.x, area.y, area.w, BAR * u}, COLOR_BAR);
         rect({area.x, area.y + BAR * u - 1. / scale, area.w, 1. / scale}, COLOR_LINE);
         for (int i = 0; i < 3; ++i) {
@@ -593,32 +595,51 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
         return;
     }
     m_taskMenu = false;
-    if (action == 0 || action == 1) {
-        if (action == 1) {
-            auto window = Fullscreen::controller()->getFullscreenWindow(m_parent->space()->workspace(), true);
-            if (!window)
-                if (auto main = m_main.lock())
-                    window = main->window();
-            if (window) {
-                window->fullscreenPolicy().setUserRestored(true);
-                Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_NONE, Fullscreen::FSMODE_NONE);
-            }
+    if (action == 0) {
+        // Maximize the same window represented by the selected tab, including
+        // independent floating windows. The tiled main target may be behind it.
+        auto windows = tabWindows();
+        auto window  = activeTab(windows);
+        if (target)
+            for (const auto& candidate : Desktop::windowState()->windows())
+                if (candidate->mapped() && candidate->m_workspace == m_parent->space()->workspace() && candidate->metadata().stableID() == static_cast<uint64_t>(target)) {
+                    window = candidate;
+                    break;
+                }
+        if (!window || (target && window->metadata().stableID() != static_cast<uint64_t>(target)))
+            return;
+        window->fullscreenPolicy().setUserRestored(false);
+        Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_FULLSCREEN, Fullscreen::FSMODE_FULLSCREEN);
+        Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
+        showFullscreenControls();
+        return;
+    }
+    if (action == 1) {
+        auto window = Fullscreen::controller()->getFullscreenWindow(m_parent->space()->workspace(), true);
+        if (window) {
+            window->fullscreenPolicy().setUserRestored(true);
+            Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_NONE, Fullscreen::FSMODE_NONE);
         }
-        m_enabled = action == 1;
-        if (!m_enabled) {
-            if (auto main = m_main.lock(); main && main->window())
-                main->window()->fullscreenPolicy().setUserRestored(false);
-            showFullscreenControls();
-        } else if (m_controlsIdleTimer)
+        if (m_controlsIdleTimer)
             wl_event_source_timer_update(m_controlsIdleTimer, 0);
         if (toolbarPixels > 0)
             m_toolbarPixels = toolbarPixels;
-    } else if (action == 5)
+        recalculate();
+        if (window)
+            Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
+        return;
+    } else if (action == 5) {
         m_left = !m_left;
-    else if (action == 2 && target >= 0 && target < 3) {
+        // Moving the sidebar changes geometry, not the selected window.
+        recalculate();
+        return;
+    } else if (action == 2 && target >= 0 && target < 3) {
         if (auto task = m_slots[target].lock())
             select(task);
         else {
+            auto main = m_main.lock();
+            if (!main || main->window() != activeTab(tabWindows()))
+                return;
             m_slots[target] = m_main;
             m_main          = getNextCandidate(m_main.lock());
         }
@@ -650,7 +671,7 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
         Desktop::focusState()->fullWindowFocus(task->window(), Desktop::FOCUS_REASON_CLICK);
 }
 void CYibuAlgorithm::showFullscreenControls() {
-    if (m_enabled && !coveredByFullscreen())
+    if (!coveredByFullscreen())
         return;
     if (!m_fullscreenControlsVisible) {
         m_fullscreenControlsVisible = true;
@@ -663,7 +684,7 @@ void CYibuAlgorithm::showFullscreenControls() {
             g_pCompositor->m_wlEventLoop,
             [](void* data) {
                 auto self = static_cast<CYibuAlgorithm*>(data);
-                if ((self->m_enabled && !self->coveredByFullscreen()) || self->m_pointerButtons || self->m_pressedControl || (PROTO::data && PROTO::data->dndActive()))
+                if (!self->coveredByFullscreen() || self->m_pointerButtons || self->m_pressedControl || (PROTO::data && PROTO::data->dndActive()))
                     return 0;
                 self->m_fullscreenControlsVisible = false;
                 self->m_hoverControl              = -1;
@@ -721,7 +742,7 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
         if (m_pressedControl || control != m_controls.end())
             return true;
     }
-    if (!m_enabled || coveredByFullscreen())
+    if (coveredByFullscreen())
         return false;
     int hit = -1;
     for (int i = 0; i < 3; ++i)

@@ -1,4 +1,5 @@
 #include "WLSurface.hpp"
+#include "Subsurface.hpp"
 #include "LayerSurface.hpp"
 #include "window/Window.hpp"
 #include "../../protocols/core/Compositor.hpp"
@@ -142,9 +143,17 @@ CRegion CWLSurface::computeDamage(const std::optional<CBox>& box) const {
         }
         if (window->layoutTarget() && window->layoutTarget()->clientSize()) {
             const auto reported = window->backend().reportedSize();
-            if (reported.x > 0 && reported.y > 0)
-                damage.scale(window->size(IGeometric::GEOMETRIC_CURRENT) / reported);
+            if (reported.x > 0 && reported.y > 0) {
+                const auto visual = window->size(IGeometric::GEOMETRIC_CURRENT);
+                damage.scale(visual / reported);
+                // Damage is now in visual coordinates, not the unscaled
+                // surface extent. Clip in that same space when upscaling too.
+                if (boxSize)
+                    boxSize = visual;
+            }
         }
+    } else if (auto child = CSubsurface::fromView(m_view.lock()); child) {
+        damage.scale(child->visualScale());
     }
     if (boxSize)
         damage.intersect(CBox{{}, boxSize.value()});

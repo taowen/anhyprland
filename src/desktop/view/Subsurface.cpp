@@ -1,6 +1,7 @@
 #include "Subsurface.hpp"
 #include "../state/FocusState.hpp"
 #include "window/Window.hpp"
+#include "../../layout/target/Target.hpp"
 #include "../../config/ConfigValue.hpp"
 #include "../../protocols/core/Compositor.hpp"
 #include "../../protocols/core/Subcompositor.hpp"
@@ -112,9 +113,19 @@ Vector2D CSubsurface::position(eGeometricValueType) const {
 
 Vector2D CSubsurface::size(eGeometricValueType) const {
     if (m_wlSurface && m_wlSurface->resource())
-        return m_wlSurface->resource()->m_current.size;
+        return m_wlSurface->resource()->m_current.size * visualScale();
 
-    return m_lastSize;
+    return m_lastSize * visualScale();
+}
+
+Vector2D CSubsurface::visualScale() const {
+    auto window = m_windowParent.lock();
+    if (window && window->layoutTarget() && window->layoutTarget()->clientSize()) {
+        const auto client = window->backend().reportedSize();
+        if (client.x > 0 && client.y > 0)
+            return window->size(IGeometric::GEOMETRIC_CURRENT) / client;
+    }
+    return {1, 1};
 }
 
 CBox CSubsurface::geometricBox(eGeometricValueType t) const {
@@ -247,7 +258,7 @@ void CSubsurface::onMap() {
     m_hasLastRecheckGeometry = false;
 
     const auto COORDS = coordsGlobal();
-    CBox       box{COORDS, m_lastSize};
+    CBox       box{COORDS, m_lastSize * visualScale()};
     box.expand(4);
     g_pHyprRenderer->damageBox(box);
 
@@ -269,7 +280,7 @@ void CSubsurface::onUnmap() {
 }
 
 void CSubsurface::damageLastArea() {
-    const auto     COORDS = coordsGlobal() + m_lastPosition - m_subsurface->m_position;
+    const auto     COORDS = coordsGlobal() + (m_lastPosition - m_subsurface->m_position) * visualScale();
 
     const Vector2D MAX_DAMAGE_SIZE = m_wlSurface && m_wlSurface->resource() ?
         Vector2D{
@@ -278,7 +289,7 @@ void CSubsurface::damageLastArea() {
         } :
         m_lastSize;
 
-    CBox           box{COORDS, m_lastSize};
+    CBox           box{COORDS, MAX_DAMAGE_SIZE * visualScale()};
     box.expand(4);
     g_pHyprRenderer->damageBox(box);
 }
@@ -290,7 +301,7 @@ Vector2D CSubsurface::coordsRelativeToParent() const {
 }
 
 Vector2D CSubsurface::coordsGlobal() const {
-    Vector2D coords = coordsRelativeToParent();
+    Vector2D coords = coordsRelativeToParent() * visualScale();
 
     if (!m_windowParent.expired())
         coords += m_windowParent->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
@@ -324,7 +335,7 @@ void CSubsurface::syncScaleTransform() const {
 }
 
 Vector2D CSubsurface::size() {
-    return m_wlSurface->resource()->m_current.size;
+    return size(IGeometric::GEOMETRIC_CURRENT);
 }
 
 size_t CSubsurface::allChildrenCount() const {

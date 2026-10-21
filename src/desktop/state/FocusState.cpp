@@ -12,6 +12,8 @@
 #include "animation/WorkspaceAnimationController.hpp"
 #include "../../managers/fullscreen/FullscreenController.hpp"
 #include "../../layout/LayoutManager.hpp"
+#include "../../layout/algorithm/Algorithm.hpp"
+#include "../../layout/algorithm/TiledAlgorithm.hpp"
 #include "../../layout/target/WindowTarget.hpp"
 #include "../../event/EventBus.hpp"
 #include "../../workspace/query/Query.hpp"
@@ -99,6 +101,12 @@ void CFocusState::fullWindowFocus(PHLWINDOW pWindow, eFocusReason reason, SP<CWL
 void CFocusState::rawWindowFocus(PHLWINDOW pWindow, eFocusReason reason, SP<CWLSurfaceResource> surface) {
     static auto PFOLLOWMOUSE        = CConfigValue<Config::INTEGER>("input:follow_mouse");
     static auto PSPECIALFALLTHROUGH = CConfigValue<Config::INTEGER>("input:special_fallthrough");
+
+    if (reason == FOCUS_REASON_FFM && pWindow && pWindow->m_workspace) {
+        const auto ALGORITHM = pWindow->m_workspace->space()->algorithm();
+        if (ALGORITHM && !ALGORITHM->tiledAlgo()->allowsFocusOnPointerMove())
+            return;
+    }
 
     if (pWindow && !pWindow->layoutOwnerActive())
         return;
