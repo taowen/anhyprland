@@ -3,6 +3,7 @@
 #include "../Compositor.hpp"
 #include "../managers/SeatManager.hpp"
 #include "../layout/algorithm/tiled/yibu/YibuAlgorithm.hpp"
+#include "../config/supplementary/executor/Executor.hpp"
 #include <aquamarine/backend/Android.hpp>
 #include <android/native_window.h>
 #include <android/log.h>
@@ -181,6 +182,8 @@ extern "C" int anhyprland_open_apps() {
     return enqueue([] {
         if (auto layout = Layout::Tiled::CYibuAlgorithm::active())
             layout->action(6, 0, 0);
+        else
+            Config::Supplementary::executor()->spawn("python3 /usr/lib/arlinux/guest/yibu-launcher.py");
     });
 }
 extern "C" int anhyprland_relative_pointer(float dx, float dy, int button, int pressed) {
