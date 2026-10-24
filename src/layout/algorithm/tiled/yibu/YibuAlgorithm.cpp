@@ -18,6 +18,7 @@
 #include <cctype>
 #include <format>
 #include <ranges>
+#include <unordered_set>
 #include <cairo/cairo.h>
 #include "../../../../render/Texture.hpp"
 #include "../../../../render/pass/RectPassElement.hpp"
@@ -278,18 +279,32 @@ void CYibuAlgorithm::controls() {
 }
 
 std::vector<PHLWINDOW> CYibuAlgorithm::tabWindows() const {
-    std::vector<PHLWINDOW> result;
+    std::vector<PHLWINDOW> candidates;
     if (!m_parent)
-        return result;
+        return candidates;
+    std::unordered_set<uint64_t> eligible;
     for (const auto& window : Desktop::windowState()->windows()) {
         if (!window->mapped() || window->m_workspace != m_parent->space()->workspace())
             continue;
         const auto traits = window->backend().traits();
-        if (traits.overrideRedirect || traits.modal || traits.preventsFocus || !traits.wantsFocus)
+        if (traits.overrideRedirect || traits.preventsFocus || !traits.wantsFocus)
             continue;
-        // Untitled floating helpers are not user-facing switch targets. Keep
-        // untitled tiled documents, whose title may arrive after their map.
-        if (window->isFloating() && window->metadata().title().empty())
+        candidates.push_back(window);
+        eligible.insert(window->metadata().stableID());
+    }
+    std::vector<PHLWINDOW> result;
+    for (const auto& window : candidates) {
+        // Hide an owned window's tab only if its owner chain has a reachable
+        // switch target. Orphaned dialogs and untitled windows stay reachable.
+        bool owned  = false;
+        auto parent = window->backend().parent();
+        for (size_t depth = 0; parent && parent != window && depth < 32; ++depth, parent = parent->backend().parent()) {
+            if (!eligible.contains(parent->metadata().stableID()))
+                continue;
+            owned = true;
+            break;
+        }
+        if (owned)
             continue;
         result.push_back(window);
     }
@@ -331,7 +346,7 @@ bool CYibuAlgorithm::windowVisible(PHLWINDOW window) const {
 
 PHLWINDOW CYibuAlgorithm::activeTab(const std::vector<PHLWINDOW>& windows) const {
     auto focused = Desktop::focusState()->window();
-    // A modal dialog highlights its owner's tab instead of adding another tab.
+    // A dialog or tool palette highlights its owner's tab.
     for (size_t depth = 0; focused && depth < 32; ++depth, focused = focused->backend().parent())
         if (std::ranges::find(windows, focused) != windows.end())
             return focused;
