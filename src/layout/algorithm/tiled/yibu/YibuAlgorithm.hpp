@@ -36,7 +36,6 @@ namespace Layout::Tiled {
         void                    action(int action, int target, int toolbarPixels);
         bool                    pointer(double x, double y, uint32_t button, bool pressed);
         static CYibuAlgorithm*  active();
-        bool                    hasFullscreenControls(PHLMONITOR monitor) const;
         bool                    windowVisible(PHLWINDOW window) const;
         void                    render(PHLMONITOR monitor, bool background = false);
 
@@ -47,7 +46,6 @@ namespace Layout::Tiled {
             CONTROL_TASK,
             CONTROL_CLOSE,
             CONTROL_ROW,
-            CONTROL_FLOAT,
         };
         std::vector<WP<ITarget>>   m_tasks, m_recent; // open order (task strip), use order (oldest first)
         WP<ITarget>                m_main;
@@ -71,11 +69,9 @@ namespace Layout::Tiled {
         bool                                                  m_taskMenu = false;
         std::unordered_map<std::string, SP<Render::ITexture>> m_textures;
         int                                                   m_hoverSlot = -1, m_promotedSlot = -1;
-        wl_event_source*                                      m_hoverTimer                = nullptr;
-        wl_event_source*                                      m_controlsIdleTimer         = nullptr;
-        bool                                                  m_fullscreenControlsVisible = true;
-        uint32_t                                              m_pointerButtons            = 0;
+        wl_event_source*                                      m_hoverTimer = nullptr;
         CHyprSignalListener                                   m_focus;
+        CHyprSignalListener                                   m_fullscreen;
         void                                                  select(SP<ITarget>);
         void                                                  used(SP<ITarget>);
         void                                                  focusMain();
@@ -83,7 +79,6 @@ namespace Layout::Tiled {
         void                                                  controls();
         std::vector<PHLWINDOW>                                tabWindows() const;
         PHLWINDOW                                             activeTab(const std::vector<PHLWINDOW>&) const;
-        void                                                  showFullscreenControls();
         bool                                                  coveredByFullscreen() const;
         double                                                unit() const;
         SP<Render::ITexture>                                  text(const std::string& label, const CHyprColor& color, int pixels, int weight, int maxWidth);

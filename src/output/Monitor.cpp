@@ -1797,8 +1797,7 @@ uint32_t CMonitor::isSolitaryBlocked(bool full) {
             return reasons;
     }
 
-    const auto yibu = Layout::Tiled::CYibuAlgorithm::active();
-    if (!m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY].empty() || (yibu && yibu->hasFullscreenControls(m_self.lock()))) {
+    if (!m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY].empty()) {
         reasons |= SC_OVERLAYS;
         if (!full)
             return reasons;

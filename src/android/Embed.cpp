@@ -8,6 +8,7 @@
 #include <android/native_window.h>
 #include <android/log.h>
 #include <atomic>
+#include <algorithm>
 #include <cstdio>
 #include <sys/eventfd.h>
 #include <unistd.h>
@@ -20,10 +21,13 @@
 struct SEmbedState {
     std::mutex                        mutex;
     std::deque<std::function<void()>> commands;
-    int                               eventFd     = -1;
-    bool                              used        = false;
-    std::atomic_uint32_t              cursorShape = 1;
-    std::atomic_int                   pointerLocks = 0;
+    int                               eventFd              = -1;
+    bool                              used                 = false;
+    std::atomic_uint32_t              cursorShape          = 1;
+    std::atomic_int                   pointerLocks         = 0;
+    std::atomic_int                   controlsRightPadding = 0;
+    void (*controlsVisibility)(int)                        = nullptr;
+    bool controlsVisible                                   = false;
 };
 
 static SEmbedState                     embed;
@@ -71,6 +75,49 @@ static int dispatchCommands(int fd, uint32_t, void*) {
         command();
     }
     return 0;
+}
+
+extern "C" void anhyprland_configure_controls(int right_padding, void (*visibility)(int)) {
+    {
+        std::lock_guard lock(embed.mutex);
+        embed.controlsVisibility = visibility;
+    }
+    if (embed.controlsRightPadding.exchange(std::max(0, right_padding)) == std::max(0, right_padding))
+        return;
+    enqueue([] {
+        if (auto layout = Layout::Tiled::CYibuAlgorithm::active())
+            layout->recalculate();
+    });
+}
+
+extern "C" int anhyprland_controls_right_padding(void) {
+    return embed.controlsRightPadding.load();
+}
+
+static void controlsVisibility(bool visible) {
+    if (embed.controlsVisible == visible)
+        return;
+    embed.controlsVisible = visible;
+    void (*callback)(int) = nullptr;
+    {
+        std::lock_guard lock(embed.mutex);
+        callback = embed.controlsVisibility;
+    }
+    if (callback)
+        callback(visible);
+}
+
+extern "C" void anhyprland_hide_controls(void) {
+    controlsVisibility(false);
+}
+
+extern "C" int anhyprland_controls_visible(int visible) {
+    return enqueue([visible] {
+        if (visible)
+            if (auto layout = Layout::Tiled::CYibuAlgorithm::active())
+                layout->action(1, 0, 0);
+        controlsVisibility(visible);
+    });
 }
 
 class CEnvironmentRestore {

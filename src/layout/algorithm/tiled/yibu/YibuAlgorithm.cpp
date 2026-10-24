@@ -24,6 +24,9 @@
 #include "../../../../render/pass/RectPassElement.hpp"
 #include "../../../../render/pass/TexPassElement.hpp"
 #include "../../../../config/supplementary/executor/Executor.hpp"
+#ifdef __ANDROID__
+#include "../../../../android/Embed.h"
+#endif
 
 using namespace Layout;
 using namespace Layout::Tiled;
@@ -31,6 +34,12 @@ static std::vector<CYibuAlgorithm*> layouts;
 
 CYibuAlgorithm::CYibuAlgorithm() {
     layouts.push_back(this);
+    m_fullscreen = Event::bus()->m_events.window.fullscreen.listen([this](PHLWINDOW window) {
+#ifdef __ANDROID__
+        if (m_parent && window && window->m_workspace == m_parent->space()->workspace() && coveredByFullscreen())
+            anhyprland_hide_controls();
+#endif
+    });
     m_focus = Event::bus()->m_events.window.active.listen([this](PHLWINDOW window, Desktop::eFocusReason reason) {
         m_revealActiveTab = true;
         if (!m_arranging && m_parent && window && window->m_workspace == m_parent->space()->workspace()) {
@@ -45,10 +54,9 @@ CYibuAlgorithm::CYibuAlgorithm() {
 }
 CYibuAlgorithm::~CYibuAlgorithm() {
     m_focus.reset();
+    m_fullscreen.reset();
     if (m_hoverTimer)
         wl_event_source_remove(m_hoverTimer);
-    if (m_controlsIdleTimer)
-        wl_event_source_remove(m_controlsIdleTimer);
     for (auto& weak : m_tasks)
         if (auto target = weak.lock(); target && target->window()) {
             target->window()->setInputBlocked(Desktop::View::FOCUS_BLOCK_YIBU_INACTIVE, false);
@@ -216,13 +224,13 @@ void CYibuAlgorithm::controls() {
         selected && focused && focused->mapped() && focused->m_workspace == m_parent->space()->workspace() && focused->backend().traits().modal)
         closeWindow = focused;
     bool canClose = bool(closeWindow);
-    if (coveredByFullscreen()) {
-        double right = area.x + area.w - 10 * u;
-        if (m_fullscreenControlsVisible)
-            add({right - 40 * u, area.y + 10 * u, 40 * u, 40 * u}, "", 1, 0, CONTROL_FLOAT);
+    if (coveredByFullscreen())
         return;
-    }
     double y = area.y + 8 * u, h = 40 * u, right = area.x + area.w - 10 * u;
+#ifdef __ANDROID__
+    if (auto monitor = m_parent->space()->workspace()->m_monitor.lock())
+        right -= anhyprland_controls_right_padding() / monitor->m_scale;
+#endif
     if (canClose) {
         add({right - 40 * u, y, 40 * u, h}, "", 8, closeWindow->metadata().stableID(), CONTROL_CLOSE);
         right -= 48 * u;
@@ -403,10 +411,6 @@ bool CYibuAlgorithm::coveredByFullscreen() const {
     return m_parent && Fullscreen::controller()->hasFullscreen(m_parent->space()->workspace(), true);
 }
 
-bool CYibuAlgorithm::hasFullscreenControls(PHLMONITOR monitor) const {
-    return m_parent && m_parent->space()->workspace()->m_monitor.lock() == monitor && m_fullscreenControlsVisible && coveredByFullscreen();
-}
-
 void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
     if (!m_parent || m_parent->space()->workspace()->m_monitor.lock() != monitor)
         return;
@@ -556,10 +560,6 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
                 rect(box, hover || pressed ? CHyprColor{0.85F, 0.33F, 0.33F, 1.F} : COLOR_HOVER, box.h / 2.);
                 icon(control.action, box);
                 break;
-            case CONTROL_FLOAT:
-                rect(box, hover ? CHyprColor{0.F, 0.F, 0.F, 0.85F} : CHyprColor{0.F, 0.F, 0.F, 0.6F}, box.h / 2.);
-                icon(control.action, box);
-                break;
             case CONTROL_BUTTON:
                 rect(box, control.active || pressed ? COLOR_HOVER : hover ? CHyprColor{0.2F, 0.22F, 0.27F, 1.F} : COLOR_BUTTON, box.h / 2.);
                 if (control.action == 0)
@@ -626,7 +626,6 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
         window->fullscreenPolicy().setUserRestored(false);
         Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_FULLSCREEN, Fullscreen::FSMODE_FULLSCREEN);
         Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
-        showFullscreenControls();
         return;
     }
     if (action == 1) {
@@ -635,8 +634,6 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
             window->fullscreenPolicy().setUserRestored(true);
             Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_NONE, Fullscreen::FSMODE_NONE);
         }
-        if (m_controlsIdleTimer)
-            wl_event_source_timer_update(m_controlsIdleTimer, 0);
         if (toolbarPixels > 0)
             m_toolbarPixels = toolbarPixels;
         recalculate();
@@ -685,55 +682,18 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
     if (auto task = m_main.lock())
         Desktop::focusState()->fullWindowFocus(task->window(), Desktop::FOCUS_REASON_CLICK);
 }
-void CYibuAlgorithm::showFullscreenControls() {
-    if (!coveredByFullscreen())
-        return;
-    if (!m_fullscreenControlsVisible) {
-        m_fullscreenControlsVisible = true;
-        controls();
-        if (auto monitor = m_parent->space()->workspace()->m_monitor.lock())
-            g_pHyprRenderer->damageMonitor(monitor);
-    }
-    if (!m_controlsIdleTimer)
-        m_controlsIdleTimer = wl_event_loop_add_timer(
-            g_pCompositor->m_wlEventLoop,
-            [](void* data) {
-                auto self = static_cast<CYibuAlgorithm*>(data);
-                if (!self->coveredByFullscreen() || self->m_pointerButtons || self->m_pressedControl || (PROTO::data && PROTO::data->dndActive()))
-                    return 0;
-                self->m_fullscreenControlsVisible = false;
-                self->m_hoverControl              = -1;
-                self->controls();
-                if (auto monitor = self->m_parent->space()->workspace()->m_monitor.lock())
-                    g_pHyprRenderer->damageMonitor(monitor);
-                return 0;
-            },
-            this);
-    if (m_controlsIdleTimer)
-        wl_event_source_timer_update(m_controlsIdleTimer, 3000);
-}
-
 bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) {
     if (!m_parent)
         return false;
     auto monitor = m_parent->space()->workspace()->m_monitor.lock();
     if (!monitor)
         return false;
-    if (button >= 0x110 && button < 0x130) {
-        uint32_t bit = 1U << (button - 0x110);
-        if (pressed)
-            m_pointerButtons |= bit;
-        else
-            m_pointerButtons &= ~bit;
-    }
-    // Fullscreen applications receive input everywhere except the visible
-    // restore button. Task slots and the normal toolbar remain inactive.
+    // Fullscreen applications receive all desktop input; the host controls restore them.
     if (coveredByFullscreen()) {
         m_pressedSlot = m_hoverSlot = m_promotedSlot = -1;
         if (m_hoverTimer)
             wl_event_source_timer_update(m_hoverTimer, 0);
     }
-    showFullscreenControls();
     controls();
     Vector2D point = Vector2D{x, y} / monitor->m_scale + monitor->m_position;
     if (!(PROTO::data && PROTO::data->dndActive())) {
