@@ -25,6 +25,9 @@ int anhyprland_open_apps(void);
 void anhyprland_configure_controls(int right_padding, void (*visibility)(int));
 int  anhyprland_controls_visible(int visible);
 int  anhyprland_controls_right_padding(void);
+// Output-pixel bounds published by the rendered shell; safe to query from Android.
+void anhyprland_report_taskbar(float x, float y, float width, float height);
+int  anhyprland_taskbar_contains(float x, float y);
 void anhyprland_hide_controls(void);
 int  anhyprland_cursor_shape(void);
 void anhyprland_report_cursor_shape(uint32_t shape);

@@ -62,6 +62,10 @@ CYibuAlgorithm::~CYibuAlgorithm() {
             target->window()->setInputBlocked(Desktop::View::FOCUS_BLOCK_YIBU_INACTIVE, false);
             *target->window()->presentation().alpha(Desktop::View::WINDOW_ALPHA_LAYOUT) = 1.F;
         }
+#ifdef __ANDROID__
+    if (active() == this)
+        anhyprland_report_taskbar(0, 0, 0, 0);
+#endif
     std::erase(layouts, this);
 }
 CYibuAlgorithm* CYibuAlgorithm::active() {
@@ -421,6 +425,10 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
         box.scale(scale);
         return box;
     };
+#ifdef __ANDROID__
+    const auto taskbar = coveredByFullscreen() ? CBox{} : pixels({m_parent->space()->workArea().x, m_parent->space()->workArea().y, m_parent->space()->workArea().w, BAR * u});
+    anhyprland_report_taskbar(taskbar.x, taskbar.y, taskbar.w, taskbar.h);
+#endif
     auto rect = [&](CBox box, const CHyprColor& color, double round = 0.) {
         if (box.w <= 0 || box.h <= 0)
             return;

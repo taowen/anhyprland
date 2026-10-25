@@ -27,7 +27,8 @@ struct SEmbedState {
     std::atomic_int                   pointerLocks         = 0;
     std::atomic_int                   controlsRightPadding = 0;
     void (*controlsVisibility)(int)                        = nullptr;
-    bool controlsVisible                                   = false;
+    float taskbarLeft = 0, taskbarTop = 0, taskbarRight = 0, taskbarBottom = 0;
+    bool  controlsVisible = false;
 };
 
 static SEmbedState                     embed;
@@ -88,6 +89,19 @@ extern "C" void anhyprland_configure_controls(int right_padding, void (*visibili
         if (auto layout = Layout::Tiled::CYibuAlgorithm::active())
             layout->recalculate();
     });
+}
+
+extern "C" void anhyprland_report_taskbar(float x, float y, float width, float height) {
+    std::lock_guard lock(embed.mutex);
+    embed.taskbarLeft   = x;
+    embed.taskbarTop    = y;
+    embed.taskbarRight  = x + width;
+    embed.taskbarBottom = y + height;
+}
+
+extern "C" int anhyprland_taskbar_contains(float x, float y) {
+    std::lock_guard lock(embed.mutex);
+    return x >= embed.taskbarLeft && x < embed.taskbarRight && y >= embed.taskbarTop && y < embed.taskbarBottom;
 }
 
 extern "C" int anhyprland_controls_right_padding(void) {
