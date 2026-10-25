@@ -24,6 +24,9 @@ namespace Layout::Tiled {
         bool fitsConstrainedClients() const override {
             return true;
         }
+        bool ownsFullscreenPresentation() const override {
+            return true;
+        }
         void                    newTarget(SP<ITarget>) override;
         void                    movedTarget(SP<ITarget>, std::optional<Vector2D> = std::nullopt) override;
         void                    removeTarget(SP<ITarget>) override;

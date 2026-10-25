@@ -30,6 +30,12 @@ namespace Layout {
             return false;
         }
 
+        // A desktop shell can keep its fullscreen presentation while the client
+        // returns to windowed rendering. Only an explicit shell restore ends it.
+        virtual bool ownsFullscreenPresentation() const {
+            return false;
+        }
+
         // Optional runtime layout name. Useful for generic adapter classes where
         // typeid alone cannot identify the selected layout instance.
         virtual std::optional<std::string> layoutName() const {

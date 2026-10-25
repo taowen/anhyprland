@@ -297,9 +297,7 @@ void CFullscreenController::setFullscreenMode(const PHLWINDOW window, std::optio
     if (context == FULLSCREEN_MUTATION_TRANSFER)
         window->fullscreenPolicy().clearExpectedMaximizeEcho();
 
-    const bool WANT_SYNC = context == FULLSCREEN_MUTATION_NORMAL && window->m_ruleApplicator->syncFullscreen().valueOrDefault();
-
-    bool       stateChanged = false;
+    bool stateChanged = false;
 
     if (internal.has_value())
         internal = std::clamp(internal.value(), sc<eFullscreenMode>(0), FSMODE_FULLSCREEN);
@@ -316,6 +314,13 @@ void CFullscreenController::setFullscreenMode(const PHLWINDOW window, std::optio
 
     const auto ORIGINAL_FS_HANDLER = getFsHandler(window, WAS_LAYOUT_HANDLED);
     const auto OLD_FS_MODES        = ORIGINAL_FS_HANDLER->getFullscreenModes(window->windowTarget());
+
+    const auto ALGORITHM        = window->m_workspace ? window->m_workspace->space()->algorithm() : nullptr;
+    const bool SHELL_FULLSCREEN = OLD_FS_MODES.internal == FSMODE_FULLSCREEN && ALGORITHM && ALGORITHM->tiledAlgo()->ownsFullscreenPresentation();
+    // Client requests still update the advertised client mode. They cannot
+    // restore a shell-owned fullscreen presentation through implicit syncing.
+    // Explicit shell requests supply internal mode and remain authoritative.
+    const bool WANT_SYNC = context == FULLSCREEN_MUTATION_NORMAL && window->m_ruleApplicator->syncFullscreen().valueOrDefault() && !SHELL_FULLSCREEN;
 
     const auto TO_BE_USED_FS_HANDLER = getFsHandler(window, layoutAware.value_or(WAS_LAYOUT_HANDLED));
     if (!TO_BE_USED_FS_HANDLER) {
