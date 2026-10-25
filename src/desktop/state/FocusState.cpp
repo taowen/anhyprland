@@ -2,6 +2,7 @@
 #include "../view/window/WindowFullscreenPolicy.hpp"
 #include "../view/window/WindowGroupMembership.hpp"
 #include "../view/window/Window.hpp"
+#include "../view/window/WindowOwnership.hpp"
 #include "../view/window/WindowPresentation.hpp"
 #include "../../Compositor.hpp"
 #include "../../render/Renderer.hpp"
@@ -17,6 +18,9 @@
 #include "../../layout/target/WindowTarget.hpp"
 #include "../../event/EventBus.hpp"
 #include "../../workspace/query/Query.hpp"
+#ifdef __ANDROID__
+#include "../../android/Embed.h"
+#endif
 
 using namespace Desktop;
 
@@ -80,8 +84,22 @@ void CFocusState::fullWindowFocus(PHLWINDOW pWindow, eFocusReason reason, SP<CWL
         if (!pWindow->m_workspace)
             return;
 
-        const auto FSWINDOW = Fullscreen::controller()->getFullscreenWindow(pWindow->m_workspace);
-        if (FSWINDOW && !Fullscreen::controller()->layoutManagedFS(FSWINDOW)) {
+        const auto FSWINDOW  = Fullscreen::controller()->getFullscreenWindow(pWindow->m_workspace);
+        const auto ALGORITHM = pWindow->m_workspace->space()->algorithm();
+#ifdef __ANDROID__
+        const auto focused = window();
+        if (focused && reason == FOCUS_REASON_CLIENT_ACTIVATION) {
+            const auto owner       = Desktop::View::ownerRoot(pWindow);
+            const bool sameProcess = pWindow->backend().pid() > 0 && pWindow->backend().pid() == focused->backend().pid();
+            if (!sameProcess && (!owner || owner != Desktop::View::ownerRoot(focused)) && !anhyprland_permit_activation(pWindow->backend().pid())) {
+                LOG(Log::DEBUG, "Denied activation without user intent: {}", pWindow);
+                return;
+            }
+        }
+#endif
+        // Shell-owned presentation follows accepted focus changes in the layout.
+        // Other layouts keep the ordinary per-window fullscreen policy.
+        if (FSWINDOW && !(ALGORITHM && ALGORITHM->tiledAlgo()->ownsFullscreenPresentation()) && !Fullscreen::controller()->layoutManagedFS(FSWINDOW)) {
             const auto RESULT = onFullscreenWorkspaceFocusWindow(pWindow, forceFSCycle);
             if (RESULT.overrideFocusWindow)
                 pWindow = RESULT.overrideFocusWindow;
@@ -152,6 +170,9 @@ void CFocusState::rawWindowFocus(PHLWINDOW pWindow, eFocusReason reason, SP<CWLS
         }
 
         g_pSeatManager->setKeyboardFocus(nullptr);
+#ifdef __ANDROID__
+        anhyprland_report_input_focus(0);
+#endif
 
         IPC::Socket2::sock()->postEvent({"activewindow", ","});
         IPC::Socket2::sock()->postEvent({"activewindowv2", ""});
@@ -275,6 +296,9 @@ void CFocusState::rawSurfaceFocus(SP<CWLSurfaceResource> pSurface, PHLWINDOW pWi
 
     g_pXWaylandManager->activateSurface(pSurface, true);
     m_focusSurface = pSurface;
+#ifdef __ANDROID__
+    anhyprland_report_input_focus(pWindowOwner ? pWindowOwner->backend().pid() : 0);
+#endif
 
     Event::bus()->m_events.input.keyboard.focus.emit(pSurface);
 

@@ -2,6 +2,10 @@
 
 #include <vector>
 #include <cstdint>
+#include <chrono>
+
+class CWLSeatResource;
+class CWLSurfaceResource;
 #include "WaylandProtocol.hpp"
 #include "xdg-activation-v1.hpp"
 
@@ -15,6 +19,8 @@ class CXDGActivationToken {
   private:
     SP<CXdgActivationTokenV1> m_resource;
 
+    WP<CWLSeatResource>       m_seat;
+    WP<CWLSurfaceResource>    m_source;
     uint32_t                  m_serial    = 0;
     std::string               m_appID     = "";
     bool                      m_committed = false;
@@ -36,8 +42,10 @@ class CXDGActivationProtocol : public IWaylandProtocol {
     void onGetToken(CXdgActivationV1* pMgr, uint32_t id);
 
     struct SSentToken {
-        std::string token;
-        wl_client*  client = nullptr; // READ-ONLY: can be dead
+        std::string                           token;
+        wl_client*                            client        = nullptr; // READ-ONLY: can be dead
+        bool                                  userInitiated = false;
+        std::chrono::steady_clock::time_point created;
     };
     std::vector<SSentToken> m_sentTokens;
 

@@ -2,6 +2,8 @@
 #include "../managers/TokenManager.hpp"
 #include "../Compositor.hpp"
 #include "core/Compositor.hpp"
+#include "core/Seat.hpp"
+#include "../managers/SeatManager.hpp"
 #include <algorithm>
 
 CXDGActivationToken::CXDGActivationToken(SP<CXdgActivationTokenV1> resource_) : m_resource(resource_) {
@@ -11,7 +13,11 @@ CXDGActivationToken::CXDGActivationToken(SP<CXdgActivationTokenV1> resource_) : 
     m_resource->setDestroy([this](CXdgActivationTokenV1* r) { PROTO::activation->destroyToken(this); });
     m_resource->setOnDestroy([this](CXdgActivationTokenV1* r) { PROTO::activation->destroyToken(this); });
 
-    m_resource->setSetSerial([this](CXdgActivationTokenV1* r, uint32_t serial_, wl_resource* seat) { m_serial = serial_; });
+    m_resource->setSetSerial([this](CXdgActivationTokenV1* r, uint32_t serial_, wl_resource* seat) {
+        m_serial = serial_;
+        m_seat   = CWLSeatResource::fromResource(seat);
+    });
+    m_resource->setSetSurface([this](CXdgActivationTokenV1* r, wl_resource* surface) { m_source = CWLSurfaceResource::fromResource(surface); });
 
     m_resource->setSetAppId([this](CXdgActivationTokenV1* r, const char* appid) { m_appID = appid; });
 
@@ -31,7 +37,11 @@ CXDGActivationToken::CXDGActivationToken(SP<CXdgActivationTokenV1> resource_) : 
 
         m_resource->sendDone(m_token.c_str());
 
-        PROTO::activation->m_sentTokens.push_back({m_token, m_resource->client()});
+        const auto source        = m_source.lock();
+        const auto seat          = m_seat.lock();
+        const bool userInitiated = source && seat && source->client() == m_resource->client() && seat->client() == m_resource->client() &&
+            (g_pSeatManager->m_state.keyboardFocus == source || g_pSeatManager->m_state.pointerFocus == source) && g_pSeatManager->serialValid(seat, m_serial);
+        PROTO::activation->m_sentTokens.push_back({m_token, m_resource->client(), userInitiated, std::chrono::steady_clock::now()});
 
         auto count = std::ranges::count_if(PROTO::activation->m_sentTokens, [this](const auto& other) { return other.client == m_resource->client(); });
 
@@ -74,6 +84,7 @@ void CXDGActivationProtocol::bindManager(wl_client* client, void* data, uint32_t
             return;
         }
 
+        const bool userInitiated = TOKEN->userInitiated && std::chrono::steady_clock::now() - TOKEN->created < std::chrono::seconds{5};
         // remove token. It's been now spent.
         m_sentTokens.erase(TOKEN);
 
@@ -85,7 +96,7 @@ void CXDGActivationProtocol::bindManager(wl_client* client, void* data, uint32_t
             return;
         }
 
-        PWINDOW->activate();
+        PWINDOW->activate(userInitiated);
     });
 }
 

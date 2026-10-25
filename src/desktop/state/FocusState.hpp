@@ -27,6 +27,8 @@ namespace Desktop {
         FOCUS_REASON_NEW_WINDOW                   = 1 << 16,
         FOCUS_REASON_GHOSTS                       = 1 << 17,
         FOCUS_REASON_OTHER                        = 1 << 18,
+        FOCUS_REASON_CLIENT_ACTIVATION            = 1 << 19,
+        FOCUS_REASON_USER_ACTIVATION              = 1 << 20,
     };
 
     bool isHardInputFocusReason(eFocusReason r);

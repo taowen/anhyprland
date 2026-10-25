@@ -28,7 +28,9 @@ struct SEmbedState {
     std::atomic_int                   controlsRightPadding = 0;
     void (*controlsVisibility)(int)                        = nullptr;
     float taskbarLeft = 0, taskbarTop = 0, taskbarRight = 0, taskbarBottom = 0;
-    bool  controlsVisible = false;
+    void (*inputFocus)(int) = nullptr;
+    int (*activation)(int)  = nullptr;
+    bool controlsVisible    = false;
 };
 
 static SEmbedState                     embed;
@@ -102,6 +104,31 @@ extern "C" void anhyprland_report_taskbar(float x, float y, float width, float h
 extern "C" int anhyprland_taskbar_contains(float x, float y) {
     std::lock_guard lock(embed.mutex);
     return x >= embed.taskbarLeft && x < embed.taskbarRight && y >= embed.taskbarTop && y < embed.taskbarBottom;
+}
+
+extern "C" void anhyprland_configure_input_focus(void (*callback)(int), int (*activation)(int)) {
+    std::lock_guard lock(embed.mutex);
+    embed.inputFocus = callback;
+    embed.activation = activation;
+}
+
+extern "C" int anhyprland_permit_activation(int pid) {
+    int (*callback)(int) = nullptr;
+    {
+        std::lock_guard lock(embed.mutex);
+        callback = embed.activation;
+    }
+    return callback ? callback(pid) : 1;
+}
+
+extern "C" void anhyprland_report_input_focus(int pid) {
+    void (*callback)(int) = nullptr;
+    {
+        std::lock_guard lock(embed.mutex);
+        callback = embed.inputFocus;
+    }
+    if (callback)
+        callback(pid);
 }
 
 extern "C" int anhyprland_controls_right_padding(void) {

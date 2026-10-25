@@ -19,8 +19,11 @@ int anhyprland_window(struct ANativeWindow* window, int width, int height);
 int anhyprland_refresh_rate(int millihertz);
 int anhyprland_pointer(float x, float y, uint32_t button, int pressed);
 // Relative pixels; a button event does not warp the pointer. pressed < 0 means motion only.
-int anhyprland_relative_pointer(float dx, float dy, int button, int pressed);
-int anhyprland_open_apps(void);
+int  anhyprland_relative_pointer(float dx, float dy, int button, int pressed);
+int  anhyprland_open_apps(void);
+void anhyprland_configure_input_focus(void (*callback)(int), int (*activation)(int));
+int  anhyprland_permit_activation(int pid);
+void anhyprland_report_input_focus(int pid);
 // Host controls and fullscreen are mutually exclusive. Callback runs on the compositor thread.
 void anhyprland_configure_controls(int right_padding, void (*visibility)(int));
 int  anhyprland_controls_visible(int visible);

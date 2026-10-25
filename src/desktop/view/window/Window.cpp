@@ -17,6 +17,7 @@
 #include <fstream>
 #include <string_view>
 #include "Window.hpp"
+#include "WindowOwnership.hpp"
 #include "WindowEffectsController.hpp"
 #include "WindowFullscreenPolicy.hpp"
 #include "WindowGroupMembership.hpp"
@@ -824,6 +825,16 @@ std::unordered_map<std::string, std::string> CWindow::getEnv() {
     return results;
 }
 
+PHLWINDOW Desktop::View::ownerRoot(PHLWINDOW window) {
+    for (size_t depth = 0; window && depth < 32; ++depth) {
+        auto parent = window->backend().parent();
+        if (!parent)
+            return window;
+        window = parent;
+    }
+    return nullptr;
+}
+
 void CWindow::activate(bool force) {
     if (Desktop::focusState()->window() == m_self)
         return;
@@ -843,11 +854,9 @@ void CWindow::activate(bool force) {
         return;
     }
 
-    if (m_target->floating())
-        Desktop::windowState()->raise(m_self.lock());
-
-    Desktop::focusState()->fullWindowFocus(m_self.lock(), FOCUS_REASON_DESKTOP_STATE_CHANGE);
-    warpCursor();
+    Desktop::focusState()->fullWindowFocus(m_self.lock(), force ? FOCUS_REASON_USER_ACTIVATION : FOCUS_REASON_CLIENT_ACTIVATION);
+    if (Desktop::focusState()->window() == m_self)
+        warpCursor();
 }
 
 void CWindow::onUpdateState(const SBackendStateRequest& request) {
@@ -1864,7 +1873,7 @@ void CWindow::onActivationRequest() {
         if (!TRAITS.wantsFocus)
             return;
 
-        Desktop::focusState()->fullWindowFocus(m_self.lock(), FOCUS_REASON_DESKTOP_STATE_CHANGE);
+        Desktop::focusState()->fullWindowFocus(m_self.lock(), FOCUS_REASON_CLIENT_ACTIVATION);
         return;
     }
 

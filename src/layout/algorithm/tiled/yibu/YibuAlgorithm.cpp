@@ -2,6 +2,7 @@
 #include "../../Algorithm.hpp"
 #include "../../../target/Target.hpp"
 #include "../../../../desktop/view/window/Window.hpp"
+#include "../../../../desktop/view/window/WindowOwnership.hpp"
 #include "../../../../desktop/view/window/WindowPresentation.hpp"
 #include "../../../../desktop/view/window/WindowFullscreenPolicy.hpp"
 #include "../../../../desktop/state/FocusState.hpp"
@@ -35,9 +36,12 @@ static std::vector<CYibuAlgorithm*> layouts;
 CYibuAlgorithm::CYibuAlgorithm() {
     layouts.push_back(this);
     m_fullscreen = Event::bus()->m_events.window.fullscreen.listen([this](PHLWINDOW window) {
+        if (!m_parent || !window || window->m_workspace != m_parent->space()->workspace() ||
+            Fullscreen::controller()->getFullscreenModes(window).internal != Fullscreen::FSMODE_FULLSCREEN)
+            return;
+        m_fullscreenPresentation = true;
 #ifdef __ANDROID__
-        if (m_parent && window && window->m_workspace == m_parent->space()->workspace() && coveredByFullscreen())
-            anhyprland_hide_controls();
+        anhyprland_hide_controls();
 #endif
     });
     m_focus = Event::bus()->m_events.window.active.listen([this](PHLWINDOW window, Desktop::eFocusReason reason) {
@@ -46,6 +50,7 @@ CYibuAlgorithm::CYibuAlgorithm() {
             auto target = window->layoutTarget();
             if (std::ranges::any_of(m_tasks, [&](const auto& t) { return t.lock() == target; }))
                 select(target);
+            presentFullscreen(window);
             controls();
             if (auto monitor = m_parent->space()->workspace()->m_monitor.lock())
                 g_pHyprRenderer->damageMonitor(monitor);
@@ -211,6 +216,7 @@ void CYibuAlgorithm::focusMain() {
     m_arranging = true; // the focus listener must not re-enter select()/recalculate()
     Desktop::focusState()->fullWindowFocus(main->window(), Desktop::FOCUS_REASON_SWITCH_TO_WINDOW_SOFT);
     m_arranging = false;
+    presentFullscreen(Desktop::focusState()->window());
 }
 
 void CYibuAlgorithm::controls() {
@@ -325,20 +331,10 @@ std::vector<PHLWINDOW> CYibuAlgorithm::tabWindows() const {
     return result;
 }
 
-static PHLWINDOW windowRoot(PHLWINDOW window) {
-    for (size_t depth = 0; window && depth < 32; ++depth) {
-        auto parent = window->backend().parent();
-        if (!parent)
-            return window;
-        window = parent;
-    }
-    return nullptr;
-}
-
 bool CYibuAlgorithm::windowVisible(PHLWINDOW window) const {
     if (!window || !m_parent || window->m_workspace != m_parent->space()->workspace())
         return true;
-    auto root = windowRoot(window);
+    auto root = Desktop::View::ownerRoot(window);
     if (!root)
         return false;
     // Fixed-size independent windows are floating targets, not dialogs of the
@@ -353,7 +349,7 @@ bool CYibuAlgorithm::windowVisible(PHLWINDOW window) const {
         auto main = m_main.lock();
         selected  = main ? main->window() : nullptr;
     }
-    return !selected || root == windowRoot(selected);
+    return !selected || root == Desktop::View::ownerRoot(selected);
 }
 
 PHLWINDOW CYibuAlgorithm::activeTab(const std::vector<PHLWINDOW>& windows) const {
@@ -412,7 +408,19 @@ static CHyprColor badgeColor(const std::string& title) {
 }
 
 bool CYibuAlgorithm::coveredByFullscreen() const {
-    return m_parent && Fullscreen::controller()->hasFullscreen(m_parent->space()->workspace(), true);
+    return m_fullscreenPresentation;
+}
+
+void CYibuAlgorithm::presentFullscreen(PHLWINDOW window) {
+    if (!m_fullscreenPresentation || !m_parent || !window || !window->mapped())
+        return;
+    const auto previous = Fullscreen::controller()->getFullscreenWindow(m_parent->space()->workspace(), true);
+    const auto owner    = Desktop::View::ownerRoot(window);
+    if (previous && owner && owner == Desktop::View::ownerRoot(previous))
+        return; // Keep owned dialogs over their presented task.
+    if (previous)
+        Fullscreen::controller()->setFullscreenMode(previous, Fullscreen::FSMODE_NONE, std::nullopt, std::nullopt, Fullscreen::FULLSCREEN_MUTATION_TRANSFER);
+    Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_FULLSCREEN, std::nullopt, std::nullopt, Fullscreen::FULLSCREEN_MUTATION_TRANSFER);
 }
 
 void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
@@ -637,7 +645,8 @@ void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
         return;
     }
     if (action == 1) {
-        auto window = Fullscreen::controller()->getFullscreenWindow(m_parent->space()->workspace(), true);
+        m_fullscreenPresentation = false;
+        auto window              = Fullscreen::controller()->getFullscreenWindow(m_parent->space()->workspace(), true);
         if (window) {
             window->fullscreenPolicy().setUserRestored(true);
             Fullscreen::controller()->setFullscreenMode(window, Fullscreen::FSMODE_NONE, Fullscreen::FSMODE_NONE);

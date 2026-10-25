@@ -57,6 +57,7 @@ namespace Layout::Tiled {
         std::array<CBox, 3>        m_fitted;
         CBox                       m_mainBox, m_menuBox;
         bool                       m_left = false, m_arranging = false;
+        bool                       m_fullscreenPresentation = false;
         int                        m_toolbarPixels = 200, m_pressedSlot = -1, m_hoverControl = -1;
         size_t                     m_tabFirst = 0, m_tabCapacity = 1;
         bool                       m_revealActiveTab = true;
@@ -83,6 +84,7 @@ namespace Layout::Tiled {
         std::vector<PHLWINDOW>                                tabWindows() const;
         PHLWINDOW                                             activeTab(const std::vector<PHLWINDOW>&) const;
         bool                                                  coveredByFullscreen() const;
+        void                                                  presentFullscreen(PHLWINDOW window);
         double                                                unit() const;
         SP<Render::ITexture>                                  text(const std::string& label, const CHyprColor& color, int pixels, int weight, int maxWidth);
     };
