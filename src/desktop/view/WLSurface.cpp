@@ -54,8 +54,13 @@ bool CWLSurface::small() const {
         return false;
 
     const auto REPORTED_SIZE = O->backend().reportedSize();
-
-    return REPORTED_SIZE.x > m_resource->m_current.size.x + 1 || REPORTED_SIZE.y > m_resource->m_current.size.y + 1;
+    // An acknowledged configure can precede a client's new window geometry
+    // (for example when removing its client-side frame). If the visual window
+    // already fits the committed surface, treating the older configure size as
+    // a minimum shrinks/crops that surface a second time. Keep the small-surface
+    // fallback for windows whose assigned visual area really is larger.
+    const auto VISUAL_SIZE = O->size(IGeometric::GEOMETRIC_CURRENT);
+    return std::min(REPORTED_SIZE.x, VISUAL_SIZE.x) > m_resource->m_current.size.x + 1 || std::min(REPORTED_SIZE.y, VISUAL_SIZE.y) > m_resource->m_current.size.y + 1;
 }
 
 Vector2D CWLSurface::correctSmallVec() const {
