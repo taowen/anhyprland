@@ -193,7 +193,18 @@ def meson(name, options=()):
     def mp(value):
         return str(value).replace("\\", "/") if os.name == "nt" else str(value)
 
+    generators = ""
+    if os.name == "nt":
+        msys = Path(os.environ.get("MSYS2_ROOT", "C:/tools/msys64"))
+        bison = msys / "usr/bin/bison.exe"
+        if not bison.is_file():
+            raise SystemExit(f"Missing MSYS2 bison at {bison}")
+        # libxkbcommon resolves bison from the cross-machine binaries table.
+        # Scope its MSYS runtime to this generator, never the NDK build's PATH.
+        command = [mp(msys / "usr/bin/bash.exe"), "-c", 'PATH=/usr/bin:$PATH exec "$@"', "--", mp(bison)]
+        generators = f"\nbison = {command!r}"
     cross.write_text("[binaries]\n" + "\n".join(f"{k} = {mp(env[v])!r}" for k, v in [("c", "CC"), ("cpp", "CXX"), ("ar", "AR"), ("strip", "STRIP")]) +
+                     generators +
                      f"\npkg-config = {mp(env.get('PKG_CONFIG', 'pkg-config'))!r}\n[host_machine]\nsystem = 'android'\ncpu_family = 'aarch64'\ncpu = 'aarch64'\nendian = 'little'\n" +
                      f"[built-in options]\nc_args = ['-fPIC', '-I{mp(PREFIX)}/include', '-I{mp(SHARED)}/include']\n" +
                      f"c_link_args = ['-L{mp(PREFIX)}/lib', '-L{mp(SHARED)}/lib']\npkg_config_path = '{mp(env['PKG_CONFIG_PATH'])}'\n" +
