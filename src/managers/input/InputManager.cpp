@@ -622,8 +622,8 @@ void CInputManager::mouseMoveUnified(uint32_t time, bool refocus, bool mouse, st
 
     Vector2D surfaceLocal = surfacePos == Vector2D(-1337, -1337) ? surfaceCoords : mouseCoords - surfacePos;
 
-    if (pFoundWindow && pFoundWindow->backend().isX11()) // for x11 force scale zero
-        surfaceLocal = pFoundWindow->backend().surfaceLocalToBuffer(surfaceLocal);
+    if (pFoundWindow && pFoundWindow->backend().isX11())
+        surfaceLocal = pFoundWindow->backend().surfaceLocalToBuffer(Desktop::viewState()->hitTest().surfaceLocalAt(mouseCoords, pFoundWindow, foundSurface));
 
     bool allowKeyboardRefocus = true;
 

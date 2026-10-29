@@ -94,7 +94,8 @@ void CInputManager::onTouchDown(ITouch::SDownEvent e) {
         m_touchData.touchSurfaceOrigin = TOUCH_COORDS - local;
     } else if (!m_touchData.touchFocusWindow.expired()) {
         if (m_touchData.touchFocusWindow->backend().isX11()) {
-            local = m_touchData.touchFocusWindow->backend().surfaceLocalToBuffer(TOUCH_COORDS - m_touchData.touchFocusWindow->position(Desktop::View::IGeometric::GEOMETRIC_GOAL));
+            local = m_touchData.touchFocusWindow->backend().surfaceLocalToBuffer(
+                Desktop::viewState()->hitTest().surfaceLocalAt(TOUCH_COORDS, m_touchData.touchFocusWindow.lock(), m_touchData.touchFocusSurface.lock()));
             m_touchData.touchSurfaceOrigin = m_touchData.touchFocusWindow->position(Desktop::View::IGeometric::GEOMETRIC_GOAL);
         } else {
             Desktop::viewState()->hitTest().windowSurfaceAt(TOUCH_COORDS, m_touchData.touchFocusWindow.lock(), local);
@@ -196,7 +197,8 @@ void CInputManager::onTouchMove(ITouch::SMotionEvent e) {
         const auto TOUCH_COORDS = PMONITOR->m_position + (e.pos * PMONITOR->m_size);
         auto       local        = TOUCH_COORDS - m_touchData.touchSurfaceOrigin;
         if (m_touchData.touchFocusWindow->backend().isX11())
-            local = m_touchData.touchFocusWindow->backend().surfaceLocalToBuffer(local);
+            local = m_touchData.touchFocusWindow->backend().surfaceLocalToBuffer(
+                Desktop::viewState()->hitTest().surfaceLocalAt(TOUCH_COORDS, m_touchData.touchFocusWindow.lock(), m_touchData.touchFocusSurface.lock()));
 
         g_pSeatManager->sendTouchMotion(e.timeMs, e.touchID, local);
     } else if (validMapped(m_touchData.touchFocusLS)) {

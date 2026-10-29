@@ -56,13 +56,13 @@ PHLWINDOW CViewHitTester::windowAtInternal(const Vector2D& pos, uint16_t propert
     // Xwayland publishes the X Shape input region on its wl_surface. Testing
     // only the window rectangle lets transparent helper windows steal focus
     // while the X server delivers the same click to the window underneath.
-    const auto acceptsPoint = [&pos](PHLWINDOW w) {
+    const auto acceptsPoint = [this, &pos](PHLWINDOW w) {
         if (!w->backend().isX11())
             return true;
         const auto SURFACE = w->backend().surface();
         if (!SURFACE)
             return false;
-        const auto LOCAL = w->backend().surfaceLocalToBuffer(pos - w->position(IGeometric::GEOMETRIC_CURRENT));
+        const auto LOCAL = w->backend().surfaceLocalToBuffer(surfaceLocalAt(pos, w, SURFACE));
         // Preserve compositor decorations and border resize hitboxes.
         if (!CBox{Vector2D{}, SURFACE->m_current.size}.containsPoint(LOCAL))
             return true;
@@ -287,7 +287,7 @@ static Vector2D windowClientLocal(const Vector2D& pos, PHLWINDOW window) {
     auto local = pos - window->position(IGeometric::GEOMETRIC_CURRENT);
     if (window->layoutTarget() && window->layoutTarget()->clientSize()) {
         const auto visual = window->size(IGeometric::GEOMETRIC_CURRENT);
-        const auto client = window->backend().reportedSize();
+        const auto client = window->backend().bufferToSurfaceLocal(window->backend().reportedSize());
         if (visual.x > 0 && visual.y > 0 && client.x > 0 && client.y > 0)
             local *= client / visual;
     }
