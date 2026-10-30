@@ -26,6 +26,7 @@ struct SEmbedState {
     bool                              used                 = false;
     std::atomic_uint32_t              cursorShape          = 1;
     std::atomic_uint64_t              cursorPosition       = UINT64_MAX;
+    std::atomic_bool                  fullscreen           = false;
     std::atomic_int                   pointerLocks         = 0;
     std::atomic_int                   controlsRightPadding = 0;
     void (*controlsVisibility)(int)                        = nullptr;
@@ -137,8 +138,8 @@ extern "C" int anhyprland_controls_right_padding(void) {
     return embed.controlsRightPadding.load();
 }
 
-static void controlsVisibility(bool visible) {
-    if (embed.controlsVisible == visible)
+static void controlsVisibility(bool visible, bool notify = false) {
+    if (embed.controlsVisible == visible && !notify)
         return;
     embed.controlsVisible = visible;
     void (*callback)(int) = nullptr;
@@ -151,14 +152,21 @@ static void controlsVisibility(bool visible) {
 }
 
 extern "C" void anhyprland_hide_controls(void) {
-    controlsVisibility(false);
+    const bool ENTERED = !embed.fullscreen.exchange(true);
+    controlsVisibility(false, ENTERED);
+}
+
+extern "C" int anhyprland_fullscreen(void) {
+    return embed.fullscreen.load();
 }
 
 extern "C" int anhyprland_controls_visible(int visible) {
     return enqueue([visible] {
-        if (visible)
+        if (visible) {
+            embed.fullscreen.store(false);
             if (auto layout = Layout::Tiled::CYibuAlgorithm::active())
                 layout->action(1, 0, 0);
+        }
         controlsVisibility(visible);
     });
 }

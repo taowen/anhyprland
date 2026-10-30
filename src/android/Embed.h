@@ -27,6 +27,7 @@ void anhyprland_report_input_focus(int pid);
 // Host controls and fullscreen are mutually exclusive. Callback runs on the compositor thread.
 void anhyprland_configure_controls(int right_padding, void (*visibility)(int));
 int  anhyprland_controls_visible(int visible);
+int  anhyprland_fullscreen(void);
 int  anhyprland_controls_right_padding(void);
 // Output-pixel bounds published by the rendered shell; safe to query from Android.
 void anhyprland_report_taskbar(float x, float y, float width, float height);
