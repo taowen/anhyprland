@@ -86,3 +86,11 @@ bool CWindowFullscreenPolicy::userRestored() const {
 void CWindowFullscreenPolicy::setUserRestored(bool restored) {
     m_userRestored = restored;
 }
+
+bool CWindowFullscreenPolicy::clientRequestedFullscreen() const {
+    return m_clientRequestedFullscreen;
+}
+
+void CWindowFullscreenPolicy::setClientRequestedFullscreen(bool requested) {
+    m_clientRequestedFullscreen = requested;
+}

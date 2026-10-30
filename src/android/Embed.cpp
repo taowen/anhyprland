@@ -2,6 +2,7 @@
 #include "Embed.h"
 #include "../Compositor.hpp"
 #include "../managers/SeatManager.hpp"
+#include "../pointer/PointerManager.hpp"
 #include "../layout/algorithm/tiled/yibu/YibuAlgorithm.hpp"
 #include "../config/supplementary/executor/Executor.hpp"
 #include <aquamarine/backend/Android.hpp>
@@ -24,6 +25,7 @@ struct SEmbedState {
     int                               eventFd              = -1;
     bool                              used                 = false;
     std::atomic_uint32_t              cursorShape          = 1;
+    std::atomic_uint64_t              cursorPosition       = UINT64_MAX;
     std::atomic_int                   pointerLocks         = 0;
     std::atomic_int                   controlsRightPadding = 0;
     void (*controlsVisibility)(int)                        = nullptr;
@@ -276,8 +278,18 @@ extern "C" int anhyprland_open_apps() {
 }
 extern "C" int anhyprland_relative_pointer(float dx, float dy, int button, int pressed) {
     return enqueue([=] {
-        if (auto output = backend())
-            output->relativePointer(dx, dy, button > 0 ? sc<uint32_t>(button) : 0, pressed);
+        auto output = backend();
+        if (!output)
+            return;
+        if (dx != 0.f || dy != 0.f)
+            output->relativePointer(dx, dy, 0, -1);
+        // Relative input uses the same shell hit testing as absolute input,
+        // at the compositor's current position rather than an Android copy.
+        const auto POSITION = Pointer::mgr()->position();
+        if (auto layout = Layout::Tiled::CYibuAlgorithm::active(); layout && layout->pointer(POSITION.x, POSITION.y, button > 0 ? sc<uint32_t>(button) : 0, pressed))
+            return;
+        if (button > 0 && pressed >= 0)
+            output->relativePointer(0, 0, sc<uint32_t>(button), pressed);
     });
 }
 extern "C" int anhyprland_cursor_shape() {
@@ -286,11 +298,17 @@ extern "C" int anhyprland_cursor_shape() {
 extern "C" int anhyprland_pointer_locked() {
     return embed.pointerLocks.load(std::memory_order_relaxed) > 0;
 }
+extern "C" uint64_t anhyprland_cursor_position() {
+    return embed.cursorPosition.load(std::memory_order_relaxed);
+}
+extern "C" void anhyprland_report_cursor_position(int32_t x, int32_t y) {
+    embed.cursorPosition.store((sc<uint64_t>(sc<uint32_t>(x)) << 32) | sc<uint32_t>(y), std::memory_order_relaxed);
+}
 extern "C" void anhyprland_report_pointer_lock(int acquired) {
     embed.pointerLocks.fetch_add(acquired ? 1 : -1, std::memory_order_relaxed);
 }
 extern "C" void anhyprland_report_cursor_shape(uint32_t shape) {
-    embed.cursorShape.store(shape > 0 ? shape : 1, std::memory_order_relaxed);
+    embed.cursorShape.store(shape, std::memory_order_relaxed);
 }
 extern "C" int anhyprland_axis(float dx, float dy) {
     return enqueue([=] {

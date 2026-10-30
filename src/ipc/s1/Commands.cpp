@@ -45,6 +45,8 @@ using namespace Hyprutils::String;
 #include "../../devices/ITouch.hpp"
 #include "../../devices/Tablet.hpp"
 #include "../../protocols/GlobalShortcuts.hpp"
+#include "../../protocols/core/Compositor.hpp"
+#include "../../layout/target/Target.hpp"
 #include "../../debug/log/RollingLogFollow.hpp"
 #include "../../config/ConfigManager.hpp"
 #include "../../helpers/MiscFunctions.hpp"
@@ -407,6 +409,14 @@ std::string CCommandFormatter::getWindowData(PHLWINDOW w, eHyprCtlOutputFormat f
     const auto METADATA          = w->backend().metadata();
     const bool VISIBLE           = w->mapped() && w->acceptsInput() && w->alphaNonZero();
     const auto WORKSPACE_ADDRESS = w->workspaceAddress();
+    const auto REPORTED_SIZE     = w->backend().reportedSize();
+    const auto GEOMETRY          = w->backend().geometry().box;
+    const auto SURFACE           = w->backend().surface();
+    const auto SURFACE_SIZE      = SURFACE ? SURFACE->m_current.size : Vector2D{};
+    const auto BUFFER_SIZE       = SURFACE ? SURFACE->m_current.bufferSize : Vector2D{};
+    const auto VIEWPORT_DEST     = SURFACE && SURFACE->m_current.viewport.hasDestination ? SURFACE->m_current.viewport.destination : Vector2D{};
+    const auto VIEWPORT_SOURCE   = SURFACE && SURFACE->m_current.viewport.hasSource ? SURFACE->m_current.viewport.source : CBox{};
+    const auto CLIENT_SIZE       = w->layoutTarget() ? w->layoutTarget()->clientSize().value_or(Vector2D{}) : Vector2D{};
 
     if (format == eHyprCtlOutputFormat::FORMAT_JSON) {
         return std::format(
@@ -418,6 +428,14 @@ std::string CCommandFormatter::getWindowData(PHLWINDOW w, eHyprCtlOutputFormat f
     "acceptsInput": {},
     "at": [{}, {}],
     "size": [{}, {}],
+    "reportedSize": [{}, {}],
+    "clientSize": [{}, {}],
+    "surfaceSize": [{}, {}],
+    "bufferSize": [{}, {}],
+    "surfaceScale": {},
+    "viewportDestination": [{}, {}],
+    "viewportSource": [{}, {}, {}, {}],
+    "windowGeometry": [{}, {}, {}, {}],
     "workspace": {{
         {}"address": "{}",
         "type": "{}",
@@ -438,6 +456,7 @@ std::string CCommandFormatter::getWindowData(PHLWINDOW w, eHyprCtlOutputFormat f
     "pinFullscreened": {},
     "fullscreen": {},
     "fullscreenClient": {},
+    "clientRequestedFullscreen": {},
     "fullscreenHandler": "{}",
     "allowedOverFullscreen": {},
     "grouped": [{}],
@@ -453,18 +472,21 @@ std::string CCommandFormatter::getWindowData(PHLWINDOW w, eHyprCtlOutputFormat f
 }},)#",
             rc<uintptr_t>(w.get()), (w->mapped() ? "true" : "false"), (w->isHidden() ? "true" : "false"), (VISIBLE ? "true" : "false"), (w->acceptsInput() ? "true" : "false"),
             sc<int>(w->position(Desktop::View::IGeometric::GEOMETRIC_GOAL).x), sc<int>(w->position(Desktop::View::IGeometric::GEOMETRIC_GOAL).y),
-            sc<int>(w->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).x), sc<int>(w->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).y), androidWorkspaceIDField(w->m_workspace),
+            sc<int>(w->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).x), sc<int>(w->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).y), sc<int>(REPORTED_SIZE.x),
+            sc<int>(REPORTED_SIZE.y), sc<int>(CLIENT_SIZE.x), sc<int>(CLIENT_SIZE.y), sc<int>(SURFACE_SIZE.x), sc<int>(SURFACE_SIZE.y), sc<int>(BUFFER_SIZE.x),
+            sc<int>(BUFFER_SIZE.y), SURFACE ? SURFACE->m_current.scale : 0, VIEWPORT_DEST.x, VIEWPORT_DEST.y, VIEWPORT_SOURCE.x, VIEWPORT_SOURCE.y, VIEWPORT_SOURCE.w,
+            VIEWPORT_SOURCE.h, sc<int>(GEOMETRY.x), sc<int>(GEOMETRY.y), sc<int>(GEOMETRY.w), sc<int>(GEOMETRY.h), androidWorkspaceIDField(w->m_workspace),
             escapeJSONStrings(WORKSPACE_ADDRESS), w->workspaceType(), escapeJSONStrings(!w->m_workspace ? "" : w->m_workspace->displayName()),
             (sc<int>(w->isFloating()) == 1 ? "true" : "false"), w->monitorID(), escapeJSONStrings(w->metadata().appID()), escapeJSONStrings(w->metadata().title()),
             escapeJSONStrings(w->metadata().initialAppID()), escapeJSONStrings(w->metadata().initialTitle()), w->backend().pid(), (w->backend().isX11() ? "true" : "false"),
-            w->backend().isX11() ? w->backend().clientID().id : 0,
-            w->backend().traits().overrideRedirect ? "true" : "false", w->backend().traits().belowParent ? "true" : "false",
+            w->backend().isX11() ? w->backend().clientID().id : 0, w->backend().traits().overrideRedirect ? "true" : "false", w->backend().traits().belowParent ? "true" : "false",
             ((w->m_state & Desktop::View::WINDOW_STATE_PINNED) ? "true" : "false"), (w->fullscreenPolicy().pinFullscreened() ? "true" : "false"),
             sc<uint8_t>(Fullscreen::controller()->getFullscreenModes(w).internal), sc<uint8_t>(Fullscreen::controller()->getFullscreenModes(w).client),
-            escapeJSONStrings(Fullscreen::controller()->getFullscreenHandlerNameAsString(w)), (w->fullscreenPolicy().allowedOverFullscreen() ? "true" : "false"),
-            getGroupedData(w, format), getTagsData(w, format), rc<uintptr_t>(w->swallowing().swallowee().get()), getFocusHistoryID(w),
-            (g_pInputManager->isWindowInhibiting(w, false) ? "true" : "false"), escapeJSONStrings(METADATA.tag.value_or("")), escapeJSONStrings(METADATA.description.value_or("")),
-            escapeJSONStrings(NContentType::toString(w->getContentType())), ((w->m_hints & Desktop::View::WINDOW_HINT_TEAR) ? "true" : "false"), w->metadata().stableID());
+            w->fullscreenPolicy().clientRequestedFullscreen() ? "true" : "false", escapeJSONStrings(Fullscreen::controller()->getFullscreenHandlerNameAsString(w)),
+            (w->fullscreenPolicy().allowedOverFullscreen() ? "true" : "false"), getGroupedData(w, format), getTagsData(w, format), rc<uintptr_t>(w->swallowing().swallowee().get()),
+            getFocusHistoryID(w), (g_pInputManager->isWindowInhibiting(w, false) ? "true" : "false"), escapeJSONStrings(METADATA.tag.value_or("")),
+            escapeJSONStrings(METADATA.description.value_or("")), escapeJSONStrings(NContentType::toString(w->getContentType())),
+            ((w->m_hints & Desktop::View::WINDOW_HINT_TEAR) ? "true" : "false"), w->metadata().stableID());
     } else {
         return std::format(
             "Window {:x} -> {}:\n\tmapped: {}\n\thidden: {}\n\tvisible: {}\n\tacceptsInput: {}\n\tat: {},{}\n\tsize: {},{}\n\tworkspace: {} ({})\n\tfloating: {}\n\tmonitor: "

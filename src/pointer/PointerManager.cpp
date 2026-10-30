@@ -25,6 +25,9 @@
 #include "../state/MonitorState.hpp"
 #include <climits>
 #include <cstring>
+#ifdef __ANDROID__
+#include "../android/Embed.h"
+#endif
 #ifndef __ANDROID__
 #include <gbm.h>
 #endif
@@ -359,6 +362,10 @@ void CPointerManager::updateCursorBackend() {
 }
 
 void CPointerManager::onCursorMoved() {
+#ifdef __ANDROID__
+    const auto POSITION = position();
+    anhyprland_report_cursor_position(sc<int32_t>(POSITION.x), sc<int32_t>(POSITION.y));
+#endif
     if (!hasCursor())
         return;
 

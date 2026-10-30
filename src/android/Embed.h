@@ -33,10 +33,13 @@ void anhyprland_report_taskbar(float x, float y, float width, float height);
 int  anhyprland_taskbar_contains(float x, float y);
 void anhyprland_hide_controls(void);
 int  anhyprland_cursor_shape(void);
-void anhyprland_report_cursor_shape(uint32_t shape);
-int  anhyprland_pointer_locked(void);
-void anhyprland_report_pointer_lock(int acquired);
-int  anhyprland_axis(float dx, float dy);
+// Packed signed x/y output coordinates (high/low 32 bits), UINT64_MAX before first publication.
+uint64_t anhyprland_cursor_position(void);
+void     anhyprland_report_cursor_position(int32_t x, int32_t y);
+void     anhyprland_report_cursor_shape(uint32_t shape);
+int      anhyprland_pointer_locked(void);
+void     anhyprland_report_pointer_lock(int acquired);
+int      anhyprland_axis(float dx, float dy);
 // Touch contacts in output pixels: 0=down, 1=up, 2=move, 3=cancel.
 int anhyprland_touch(int id, int action, float x, float y);
 int anhyprland_key(uint32_t evdev, int pressed);

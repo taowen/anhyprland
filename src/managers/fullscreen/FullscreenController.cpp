@@ -425,6 +425,13 @@ void CFullscreenController::setFullscreenMode(const PHLWINDOW window, std::optio
         window->fullscreenPolicy().setRestoreClientMaximized(false);
 }
 
+void CFullscreenController::updateWindowFullscreenGeometry(const PHLWINDOW window) {
+    if (!window || !validMapped(window))
+        return;
+    if (const auto HANDLER = getFsHandler(window); HANDLER)
+        HANDLER->setTargetSizeAndPosition(window->windowTarget());
+}
+
 void CFullscreenController::setWindowFullscreenModeInternal(const PHLWINDOW window, const eFullscreenMode mode, bool layoutAware, eFullscreenMutationContext context) {
 
     if (!window || !validMapped(window) || !window->m_monitor || !window->m_workspace)

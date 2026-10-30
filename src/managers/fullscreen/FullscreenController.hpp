@@ -60,6 +60,8 @@ namespace Fullscreen {
 
         // Misc. Operations
 
+        void updateWindowFullscreenGeometry(const PHLWINDOW window);
+
         // In order to avoid re-setting an FS window's size over and over again if it's FS and already set to the correct value.
         bool m_windowPosSettingQueued = false;
 

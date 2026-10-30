@@ -205,7 +205,11 @@ void IFullscreenHandler::setTargetSizeAndPosition(const SP<Layout::ITarget> targ
     // must set pos of the highest level target (i.e. if target a part of a group, must set that group's pos which will set the pos of all member targets)
     const auto LAYOUT_TARGET = target->window()->layoutTarget();
 
-    if (!target->floating() && WORKSPACE->space()->algorithm()->tiledAlgo()->fitsConstrainedClients()) {
+    // A client asking for fullscreen owns its rendering and letterboxing.
+    // Give it the output area rather than fitting its normal-window hints a
+    // second time. Shell presentation of ordinary fixed-size windows still fits.
+    const bool CLIENT_FULLSCREEN = TARGET_INTERNAL_MODE == FSMODE_FULLSCREEN && target->window()->fullscreenPolicy().clientRequestedFullscreen();
+    if (!CLIENT_FULLSCREEN && !target->floating() && WORKSPACE->space()->algorithm()->tiledAlgo()->fitsConstrainedClients()) {
         const CBox   area   = TARGET_INTERNAL_MODE == FSMODE_FULLSCREEN ? MONITOR->logicalBox() : WORKSPACE->space()->workArea();
         const auto   client = target->clampSizeForDesired(area.size());
         const double fit    = std::min(area.w / client.x, area.h / client.y);

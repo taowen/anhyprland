@@ -2947,7 +2947,7 @@ void IHyprRenderer::setCursorSurface(SP<Desktop::View::CWLSurface> surf, int hot
     m_lastCursorData.hotspotY = hotspotY;
 
 #ifdef __ANDROID__
-    anhyprland_report_cursor_shape(1);
+    anhyprland_report_cursor_shape(m_cursorHasSurface ? 1 : 0);
 #endif
 
     if (m_cursorHidden && !force)

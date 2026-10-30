@@ -877,10 +877,14 @@ void CWindow::onUpdateState(const SBackendStateRequest& request) {
 void CWindow::requestClientFullscreen(const SClientFullscreenRequest& request) {
     // a client re-asserting fullscreen every frame (notably gamescope) would snap the window back the instant
     // the drag handler pulls it out of fullscreen, so ignore the request while this window is being dragged.
-    const auto  DRAGTARGET         = g_layoutManager->dragController()->target();
-    const bool  DRAGGINGTHISWINDOW = DRAGTARGET && DRAGTARGET->window() == m_self.lock();
-    const bool  BACKEND_REQUEST    = request.origin == SClientFullscreenRequest::ORIGIN_BACKEND;
-    const auto& SUPPRESSION        = m_fullscreenPolicy->requestSuppression();
+    const auto  DRAGTARGET           = g_layoutManager->dragController()->target();
+    const bool  DRAGGINGTHISWINDOW   = DRAGTARGET && DRAGTARGET->window() == m_self.lock();
+    const bool  BACKEND_REQUEST      = request.origin == SClientFullscreenRequest::ORIGIN_BACKEND;
+    const auto& SUPPRESSION          = m_fullscreenPolicy->requestSuppression();
+    const bool  PRESENTATION_CHANGED = BACKEND_REQUEST && request.fullscreen.has_value() && request.fullscreen.value() != m_fullscreenPolicy->clientRequestedFullscreen();
+
+    if (BACKEND_REQUEST && request.fullscreen.has_value())
+        m_fullscreenPolicy->setClientRequestedFullscreen(request.fullscreen.value());
 
     // A compositor restore is an explicit user choice. Games may repeatedly
     // reassert fullscreen after receiving the restored window size.
@@ -929,6 +933,12 @@ void CWindow::requestClientFullscreen(const SClientFullscreenRequest& request) {
         else
             m_fullscreenPolicy->clearPendingClientMode(Fullscreen::FSMODE_MAXIMIZED);
     }
+
+    // A shell-presented window may already advertise fullscreen before the
+    // client requests it. Its modes then stay unchanged, but its sizing policy
+    // changes from fitting normal-window hints to configuring the full output.
+    if (PRESENTATION_CHANGED && m_isMapped && !DRAGGINGTHISWINDOW && !SUPPRESSION.fullscreen)
+        Fullscreen::controller()->updateWindowFullscreenGeometry(m_self.lock());
 }
 
 void CWindow::onUpdateMeta(const SBackendMetadata& metadata) {
