@@ -34,6 +34,14 @@ using namespace Layout;
 using namespace Layout::Tiled;
 static std::vector<CYibuAlgorithm*> layouts;
 
+static const char* tr(const char* zh, const char* en) {
+#ifdef __ANDROID__
+    return anhyprland_chinese() ? zh : en;
+#else
+    return en;
+#endif
+}
+
 CYibuAlgorithm::CYibuAlgorithm() {
     layouts.push_back(this);
     m_fullscreen = Event::bus()->m_events.window.fullscreen.listen([this](PHLWINDOW window) {
@@ -250,9 +258,9 @@ void CYibuAlgorithm::controls() {
     }
     CBox tasks{right - 98 * u, y, 98 * u, h};
     CBox apps{tasks.x - 104 * u, y, 94 * u, h};
-    add({area.x + 10 * u, y, 112 * u, h}, m_left ? "Sidebar ›" : "‹ Sidebar", 5, 0, CONTROL_BUTTON);
-    add(apps, "+ Apps", 6, 0, CONTROL_PRIMARY);
-    add(tasks, "Tasks", 7, 0, CONTROL_BUTTON, m_taskMenu);
+    add({area.x + 10 * u, y, 112 * u, h}, m_left ? tr("侧栏 ›", "Sidebar ›") : tr("‹ 侧栏", "‹ Sidebar"), 5, 0, CONTROL_BUTTON);
+    add(apps, tr("+ 应用", "+ Apps"), 6, 0, CONTROL_PRIMARY);
+    add(tasks, tr("任务", "Tasks"), 7, 0, CONTROL_BUTTON, m_taskMenu);
     // One chip per business window, without application grouping. Floating
     // document/tool dialogs participate without becoming tiled layout targets.
     double     x0 = area.x + 134 * u, x1 = apps.x - 14 * u;
@@ -286,7 +294,7 @@ void CYibuAlgorithm::controls() {
         if (m_slots[i].expired())
             continue;
         auto box = m_boxes[i];
-        add({box.x + box.w - 64 * u, box.y + 4 * u, 60 * u, 26 * u}, "Unpin", 3, i, CONTROL_BUTTON);
+        add({box.x + box.w - 64 * u, box.y + 4 * u, 60 * u, 26 * u}, tr("取消固定", "Unpin"), 3, i, CONTROL_BUTTON);
     }
     if (!m_taskMenu)
         return;
@@ -520,8 +528,8 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
         if (!coveredByFullscreen() && !m_main.lock()) {
             auto box = m_mainBox;
             rect(box, COLOR_SLOT, 16 * u);
-            label("No task in the main area", {box.x, box.y + box.h / 2. - 44 * u, box.w, 40 * u}, COLOR_TEXT, 22, 600, true);
-            label("Open one with + Apps, or click a pinned task to bring it here", {box.x, box.y + box.h / 2. + 4 * u, box.w, 30 * u}, COLOR_MUTED, 15, 500, true);
+            label(tr("主区域暂无任务", "No task in the main area"), {box.x, box.y + box.h / 2. - 44 * u, box.w, 40 * u}, COLOR_TEXT, 22, 600, true);
+            label(tr("通过“应用”打开，或点击侧栏中的任务", "Open one with + Apps, or click a pinned task to bring it here"), {box.x, box.y + box.h / 2. + 4 * u, box.w, 30 * u}, COLOR_MUTED, 15, 500, true);
         }
         return;
     }
@@ -536,7 +544,7 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
                 rect(box, COLOR_EMPTY_LINE, 14 * u);
                 rect({box.x + 2. / scale, box.y + 2. / scale, box.w - 4. / scale, box.h - 4. / scale}, COLOR_SLOT, 13 * u);
                 label("+", {box.x, box.y + box.h / 2. - 40 * u, box.w, 44 * u}, COLOR_PRIMARY, 34, 400, true);
-                label("Pin the current task", {box.x, box.y + box.h / 2. + 8 * u, box.w, 26 * u}, COLOR_MUTED, 14, 500, true);
+                label(tr("固定当前任务", "Pin the current task"), {box.x, box.y + box.h / 2. + 8 * u, box.w, 26 * u}, COLOR_MUTED, 14, 500, true);
                 continue;
             }
             // Occupied slot: header with the task name; letterbox around the live preview.

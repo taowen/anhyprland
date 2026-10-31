@@ -37,6 +37,15 @@ struct SEmbedState {
 };
 
 static SEmbedState                     embed;
+static std::atomic_bool                chinese = false;
+
+extern "C" void anhyprland_configure_language(int enabled) {
+    chinese.store(enabled != 0);
+}
+
+extern "C" int anhyprland_chinese(void) {
+    return chinese.load();
+}
 
 static SP<Aquamarine::CAndroidBackend> backend() {
     if (!g_pCompositor || !g_pCompositor->m_aqBackend)
