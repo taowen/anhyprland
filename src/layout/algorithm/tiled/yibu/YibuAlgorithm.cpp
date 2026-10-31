@@ -9,6 +9,7 @@
 #include "../../../../desktop/state/WindowState.hpp"
 #include "../../../../event/EventBus.hpp"
 #include "../../../../output/Monitor.hpp"
+#include "../../../../pointer/PointerManager.hpp"
 #include "../../../../helpers/MiscFunctions.hpp"
 #include "../../../../Compositor.hpp"
 #include "../../../../protocols/core/DataDevice.hpp"
@@ -713,6 +714,13 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
     }
     controls();
     Vector2D point = Vector2D{x, y} / monitor->m_scale + monitor->m_position;
+    // Chrome consumes client input, not cursor motion. Keep the authoritative
+    // position current even when no backend pointer event is forwarded.
+    const auto consume = [&] {
+        if (Pointer::mgr()->position() != point)
+            Pointer::mgr()->warpTo(point);
+        return true;
+    };
     if (!(PROTO::data && PROTO::data->dndActive())) {
         auto control = std::ranges::find_if(m_controls, [&](const auto& item) { return item.box.containsPoint(point); });
         int  hover   = control == m_controls.end() ? -1 : sc<int>(control - m_controls.begin());
@@ -722,17 +730,17 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
         }
         if (button == 0x110 && pressed && control != m_controls.end()) {
             m_pressedControl = *control;
-            return true;
+            return consume();
         }
         if (button == 0x110 && !pressed && m_pressedControl) {
             auto previous = *m_pressedControl;
             m_pressedControl.reset();
             if (control != m_controls.end() && previous.box.containsPoint(point) && previous.action == control->action && previous.target == control->target)
                 action(previous.action, previous.target, 0);
-            return true;
+            return consume();
         }
         if (m_pressedControl || control != m_controls.end())
-            return true;
+            return consume();
     }
     if (coveredByFullscreen())
         return false;
@@ -768,15 +776,15 @@ bool CYibuAlgorithm::pointer(double x, double y, uint32_t button, bool pressed) 
     if (button == 0x110) {
         if (pressed && hit >= 0) {
             m_pressedSlot = hit;
-            return true;
+            return consume();
         }
         if (!pressed && m_pressedSlot >= 0) {
             int previous  = m_pressedSlot;
             m_pressedSlot = -1;
             if (previous == hit)
                 action(2, hit, 0);
-            return true;
+            return consume();
         }
     }
-    return hit >= 0;
+    return hit >= 0 ? consume() : false;
 }
