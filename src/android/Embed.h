@@ -28,13 +28,14 @@ void anhyprland_report_input_focus(int pid);
 void anhyprland_configure_controls(int right_padding, void (*visibility)(int));
 int  anhyprland_controls_visible(int visible);
 int  anhyprland_fullscreen(void);
+int  anhyprland_toggle_fullscreen(void);
 void anhyprland_configure_language(int chinese);
 int  anhyprland_chinese(void);
 int  anhyprland_controls_right_padding(void);
 // Output-pixel bounds published by the rendered shell; safe to query from Android.
 void anhyprland_report_taskbar(float x, float y, float width, float height);
 int  anhyprland_taskbar_contains(float x, float y);
-void anhyprland_hide_controls(void);
+void anhyprland_report_fullscreen(int fullscreen);
 int  anhyprland_cursor_shape(void);
 // Packed signed x/y output coordinates (high/low 32 bits), UINT64_MAX before first publication.
 uint64_t anhyprland_cursor_position(void);

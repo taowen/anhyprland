@@ -160,23 +160,35 @@ static void controlsVisibility(bool visible, bool notify = false) {
         callback(visible);
 }
 
-extern "C" void anhyprland_hide_controls(void) {
-    const bool ENTERED = !embed.fullscreen.exchange(true);
-    controlsVisibility(false, ENTERED);
+extern "C" void anhyprland_report_fullscreen(int fullscreen) {
+    const bool FULLSCREEN = fullscreen != 0;
+    const bool CHANGED    = embed.fullscreen.exchange(FULLSCREEN) != FULLSCREEN;
+    controlsVisibility(!FULLSCREEN, CHANGED);
 }
 
 extern "C" int anhyprland_fullscreen(void) {
     return embed.fullscreen.load();
 }
 
+static void setControlsVisible(bool visible) {
+    if (visible) {
+        if (auto layout = Layout::Tiled::CYibuAlgorithm::active())
+            layout->action(1, 0, 0);
+        anhyprland_report_fullscreen(false);
+    }
+    controlsVisibility(visible);
+}
+
 extern "C" int anhyprland_controls_visible(int visible) {
-    return enqueue([visible] {
-        if (visible) {
-            embed.fullscreen.store(false);
-            if (auto layout = Layout::Tiled::CYibuAlgorithm::active())
-                layout->action(1, 0, 0);
-        }
-        controlsVisibility(visible);
+    return enqueue([visible] { setControlsVisible(visible != 0); });
+}
+
+extern "C" int anhyprland_toggle_fullscreen(void) {
+    return enqueue([] {
+        if (embed.fullscreen.load())
+            setControlsVisible(true);
+        else if (auto layout = Layout::Tiled::CYibuAlgorithm::active())
+            layout->action(0, 0, 0);
     });
 }
 

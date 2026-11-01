@@ -45,12 +45,16 @@ static const char* tr(const char* zh, const char* en) {
 CYibuAlgorithm::CYibuAlgorithm() {
     layouts.push_back(this);
     m_fullscreen = Event::bus()->m_events.window.fullscreen.listen([this](PHLWINDOW window) {
-        if (!m_parent || !window || window->m_workspace != m_parent->space()->workspace() ||
-            Fullscreen::controller()->getFullscreenModes(window).internal != Fullscreen::FSMODE_FULLSCREEN)
+        if (!m_parent || !window || window->m_workspace != m_parent->space()->workspace())
             return;
-        m_fullscreenPresentation = true;
+        const bool FULLSCREEN = Fullscreen::controller()->getFullscreenModes(window).internal == Fullscreen::FSMODE_FULLSCREEN;
+        if (!FULLSCREEN && !window->fullscreenPolicy().userRestored())
+            return; // Transferring presentation between tasks keeps the shell fullscreen.
+        if (FULLSCREEN)
+            window->fullscreenPolicy().setUserRestored(false);
+        m_fullscreenPresentation = FULLSCREEN;
 #ifdef __ANDROID__
-        anhyprland_hide_controls();
+        anhyprland_report_fullscreen(FULLSCREEN);
 #endif
     });
     m_focus = Event::bus()->m_events.window.active.listen([this](PHLWINDOW window, Desktop::eFocusReason reason) {
