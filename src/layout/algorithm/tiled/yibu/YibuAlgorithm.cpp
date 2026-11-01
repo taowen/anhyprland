@@ -244,7 +244,8 @@ void CYibuAlgorithm::controls() {
     auto selected    = activeTab(live);
     auto closeWindow = selected;
     if (auto focused = Desktop::focusState()->window();
-        selected && focused && focused->mapped() && focused->m_workspace == m_parent->space()->workspace() && focused->backend().traits().modal)
+        selected && focused && focused->mapped() && focused->m_workspace == m_parent->space()->workspace() &&
+        Desktop::View::ownerRoot(focused) == Desktop::View::ownerRoot(selected))
         closeWindow = focused;
     bool canClose = bool(closeWindow);
     if (coveredByFullscreen())
