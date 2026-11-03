@@ -51,6 +51,9 @@
 #include "../../helpers/MiscFunctions.hpp"
 
 #include "../../layout/LayoutManager.hpp"
+#include "../../layout/space/Space.hpp"
+#include "../../layout/algorithm/Algorithm.hpp"
+#include "../../layout/algorithm/TiledAlgorithm.hpp"
 
 #include "../../event/EventBus.hpp"
 
@@ -627,6 +630,15 @@ void CInputManager::mouseMoveUnified(uint32_t time, bool refocus, bool mouse, st
 
     bool allowKeyboardRefocus = true;
 
+    // A layout's click-to-focus policy applies to surface changes inside the
+    // same window too. Otherwise the direct rawSurfaceFocus path below can
+    // take focus back from a layer-shell menu merely because it was mapped.
+    if (!refocus && pFoundWindow && pFoundWindow->m_workspace) {
+        const auto ALGORITHM = pFoundWindow->m_workspace->space()->algorithm();
+        if (ALGORITHM && !ALGORITHM->tiledAlgo()->allowsFocusOnPointerMove())
+            allowKeyboardRefocus = false;
+    }
+
     if (!refocus && Desktop::focusState()->surface()) {
         const auto PLS = Desktop::viewState()->query().type(Desktop::View::VIEW_TYPE_LAYER_SURFACE).surface(Desktop::focusState()->surface()).runLayer();
 
@@ -900,7 +912,7 @@ void CInputManager::processMouseDownNormal(const IPointer::SButtonEvent& e, SP<I
                 break;
 
             if ((g_pSeatManager->m_mouse.expired() || !isConstrained()) /* No constraints */
-                && (w && Desktop::focusState()->window() != w) /* window should change */) {
+                && w && (Desktop::focusState()->window() != w || (!m_lastFocusOnLS && Desktop::focusState()->surface() != w->wlSurface()->resource()))) {
                 // a bit hacky
                 // if we only pressed one button, allow us to refocus. m_lCurrentlyHeldButtons.size() > 0 will stick the focus
                 if (m_currentlyHeldButtons.size() == 1) {

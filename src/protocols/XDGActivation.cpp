@@ -37,10 +37,14 @@ CXDGActivationToken::CXDGActivationToken(SP<CXdgActivationTokenV1> resource_) : 
 
         m_resource->sendDone(m_token.c_str());
 
-        const auto source        = m_source.lock();
-        const auto seat          = m_seat.lock();
-        const bool userInitiated = source && seat && source->client() == m_resource->client() && seat->client() == m_resource->client() &&
-            (g_pSeatManager->m_state.keyboardFocus == source || g_pSeatManager->m_state.pointerFocus == source) && g_pSeatManager->serialValid(seat, m_serial);
+        const auto source = m_source.lock();
+        const auto seat   = m_seat.lock();
+        const auto client = m_resource->client();
+        // set_surface is optional. GTK panels can supply a valid pointer serial
+        // without having a keyboard-focused window for their launch context.
+        const auto ownsFocusedSurface = [client, &source](const auto& focused) { return focused && focused->client() == client && (!source || source == focused); };
+        const bool userInitiated      = seat && seat->client() == client &&
+            (ownsFocusedSurface(g_pSeatManager->m_state.keyboardFocus) || ownsFocusedSurface(g_pSeatManager->m_state.pointerFocus)) && g_pSeatManager->serialValid(seat, m_serial);
         PROTO::activation->m_sentTokens.push_back({m_token, m_resource->client(), userInitiated, std::chrono::steady_clock::now()});
 
         auto count = std::ranges::count_if(PROTO::activation->m_sentTokens, [this](const auto& other) { return other.client == m_resource->client(); });
