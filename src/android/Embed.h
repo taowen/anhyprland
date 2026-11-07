@@ -25,9 +25,10 @@ int  anhyprland_open_apps(void);
 void anhyprland_configure_input_focus(void (*callback)(int), int (*activation)(int));
 int  anhyprland_permit_activation(int pid);
 void anhyprland_report_input_focus(int pid);
-// Host controls and fullscreen are mutually exclusive. Callback runs on the compositor thread.
+// Host controls visibility is independent of fullscreen. Callback runs on the compositor thread.
 void anhyprland_configure_controls(int right_padding, void (*visibility)(int));
 int  anhyprland_controls_visible(int visible);
+int  anhyprland_restore_windows(void);
 int  anhyprland_fullscreen(void);
 int  anhyprland_toggle_fullscreen(void);
 void anhyprland_configure_language(int chinese);
