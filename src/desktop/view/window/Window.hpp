@@ -119,6 +119,8 @@ namespace Desktop::View {
 
     class CWindow : public virtual IView, public virtual CGeometricMovableAnimated, public virtual IAlphaModifiable, public virtual CPopupOwner, public virtual CSubsurfaceOwner {
       public:
+        // Embedded Android Activity request: 0=desktop, 1=landscape, 2=portrait.
+        int              m_hostOrientation = 0;
         static PHLWINDOW create(UP<IWindowBackend> backend);
         static PHLWINDOW fromView(SP<IView>);
 

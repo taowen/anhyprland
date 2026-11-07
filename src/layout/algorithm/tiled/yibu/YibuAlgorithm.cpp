@@ -260,14 +260,16 @@ void CYibuAlgorithm::controls() {
         add({right - 40 * u, y, 40 * u, h}, "", 0, closeWindow->metadata().stableID(), CONTROL_BUTTON);
         right -= 48 * u;
     }
-    CBox tasks{right - 98 * u, y, 98 * u, h};
-    CBox apps{tasks.x - 104 * u, y, 94 * u, h};
-    add({area.x + 10 * u, y, 112 * u, h}, m_left ? tr("侧栏 ›", "Sidebar ›") : tr("‹ 侧栏", "‹ Sidebar"), 5, 0, CONTROL_BUTTON);
-    add(apps, tr("+ 应用", "+ Apps"), 6, 0, CONTROL_PRIMARY);
-    add(tasks, tr("任务", "Tasks"), 7, 0, CONTROL_BUTTON, m_taskMenu);
+    const bool portrait = area.h > area.w;
+    CBox       tasks{right - (portrait ? 40 : 98) * u, y, (portrait ? 40 : 98) * u, h};
+    CBox       apps{tasks.x - (portrait ? 48 : 104) * u, y, (portrait ? 40 : 94) * u, h};
+    if (!portrait)
+        add({area.x + 10 * u, y, 112 * u, h}, m_left ? tr("侧栏 ›", "Sidebar ›") : tr("‹ 侧栏", "‹ Sidebar"), 5, 0, CONTROL_BUTTON);
+    add(apps, portrait ? "" : tr("+ 应用", "+ Apps"), 6, 0, CONTROL_PRIMARY);
+    add(tasks, portrait ? "" : tr("任务", "Tasks"), 7, 0, CONTROL_BUTTON, m_taskMenu);
     // One chip per business window, without application grouping. Floating
     // document/tool dialogs participate without becoming tiled layout targets.
-    double     x0 = area.x + 134 * u, x1 = apps.x - 14 * u;
+    double     x0 = area.x + (portrait ? 10 : 134) * u, x1 = apps.x - 14 * u;
     const bool overflow = live.size() * 120. * u > x1 - x0;
     if (overflow) {
         x0 += 36 * u;
@@ -479,7 +481,7 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
         label(initial(name), box, COLOR_INK, 15, 700, true);
     };
     // Simple compositor-native icons: no icon font or theme dependency.
-    auto icon = [&](int action, CBox box) {
+    auto icon = [&](int action, CBox box, const CHyprColor& color) {
         if (action == 8) {
             // Draw around the button centre, not a font's baseline and bearings.
             int   size    = std::max(1, sc<int>(std::round(24 * u * scale)));
@@ -509,7 +511,19 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
         }
         double x = box.x + (box.w - 20 * u) / 2., y = box.y + (box.h - 20 * u) / 2.;
         double size = 20 * u, stroke = 2 * u;
-        if (action == 0) {
+        if (action == 6) {
+            for (int row = 0; row < 2; ++row)
+                for (int col = 0; col < 2; ++col)
+                    rect({x + col * 12 * u, y + row * 12 * u, 8 * u, 8 * u}, color, 2 * u);
+        } else if (action == 7) {
+            for (int i = 0; i < 2; ++i) {
+                const double left = x + i * 5 * u, top = y + i * 5 * u, edge = 15 * u;
+                rect({left, top, edge, stroke}, color);
+                rect({left, top + edge - stroke, edge, stroke}, color);
+                rect({left, top, stroke, edge}, color);
+                rect({left + edge - stroke, top, stroke, edge}, color);
+            }
+        } else if (action == 0) {
             for (int row = 0; row < 2; ++row)
                 for (int col = 0; col < 2; ++col) {
                     rect({x + col * (size - 7 * u), y + row * (size - stroke), 7 * u, stroke}, COLOR_TEXT);
@@ -575,7 +589,10 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
         switch (control.style) {
             case CONTROL_PRIMARY:
                 rect(box, pressed ? CHyprColor{0.33F, 0.72F, 0.62F, 1.F} : hover ? CHyprColor{0.55F, 0.93F, 0.82F, 1.F} : COLOR_PRIMARY, box.h / 2.);
-                label(control.label, box, COLOR_INK, 15, 700, true);
+                if (control.label.empty())
+                    icon(control.action, box, COLOR_INK);
+                else
+                    label(control.label, box, COLOR_INK, 15, 700, true);
                 break;
             case CONTROL_TASK:
             case CONTROL_ROW: {
@@ -587,12 +604,12 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
             }
             case CONTROL_CLOSE:
                 rect(box, hover || pressed ? CHyprColor{0.85F, 0.33F, 0.33F, 1.F} : COLOR_HOVER, box.h / 2.);
-                icon(control.action, box);
+                icon(control.action, box, COLOR_TEXT);
                 break;
             case CONTROL_BUTTON:
                 rect(box, control.active || pressed ? COLOR_HOVER : hover ? CHyprColor{0.2F, 0.22F, 0.27F, 1.F} : COLOR_BUTTON, box.h / 2.);
-                if (control.action == 0)
-                    icon(control.action, box);
+                if (control.label.empty())
+                    icon(control.action, box, COLOR_TEXT);
                 else
                     label(control.label, box, COLOR_TEXT, 14, 600, true);
                 break;
@@ -603,21 +620,8 @@ void CYibuAlgorithm::render(PHLMONITOR monitor, bool background) {
 void CYibuAlgorithm::action(int action, int target, int toolbarPixels) {
     if (PROTO::data && PROTO::data->dndActive())
         return;
-    if (action == 6) {
-        SP<ITarget> launcher;
-        for (auto& weak : m_tasks)
-            if (auto task = weak.lock(); task && task->window() && task->window()->metadata().appID() == "org.arlinux.Applications") {
-                launcher = task;
-                break;
-            }
-        if (!launcher) {
-            Config::Supplementary::executor()->spawn("python3 /usr/lib/arlinux/guest/yibu-launcher.py");
-            return;
-        }
-        select(launcher);
-    }
-    if (action == 7) {
-        Config::Supplementary::executor()->spawn("python3 /usr/lib/arlinux/guest/yibu-launcher.py --tasks");
+    if (action == 6 || action == 7) {
+        Config::Supplementary::executor()->spawn(action == 7 ? "python3 /usr/lib/arlinux/guest/yibu-launcher.py --tasks" : "python3 /usr/lib/arlinux/guest/yibu-launcher.py");
         return;
     }
     if (action == 8) {

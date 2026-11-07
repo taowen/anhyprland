@@ -99,9 +99,8 @@ CRegion CWLSurface::computeDamage(const std::optional<CBox>& box) const {
     if (BUFSIZE.x <= 0 || BUFSIZE.y <= 0)
         return {};
 
-    const auto SCALEDSRCSIZE =
-        m_resource->m_current.viewport.hasSource ? m_resource->m_current.viewport.source.size() * m_resource->m_current.scale : m_resource->m_current.bufferSize;
-    if (SCALEDSRCSIZE.x <= 0 || SCALEDSRCSIZE.y <= 0)
+    const auto SOURCE_SIZE = m_resource->m_current.sourceSize();
+    if (SOURCE_SIZE.x <= 0 || SOURCE_SIZE.y <= 0)
         return {};
 
     const auto SURFSIZE = m_resource->m_current.size;
@@ -129,14 +128,17 @@ CRegion CWLSurface::computeDamage(const std::optional<CBox>& box) const {
     CRegion    damage = m_resource->m_current.accumulateBufferDamage();
     damage.transform(Math::wlTransformToHyprutils(m_resource->m_current.transform), BUFSIZE.x, BUFSIZE.y);
 
-    if (m_resource->m_current.viewport.hasSource)
+    // After the buffer transform, damage uses surface axes. Apply buffer scale
+    // and the viewport in that space; raw buffer width/height no longer match
+    // the axes after a quarter-turn.
+    damage.scale(1.0 / m_resource->m_current.scale);
+    if (m_resource->m_current.viewport.hasSource) {
         damage.intersect(m_resource->m_current.viewport.source);
-
-    damage.scale({BUFSIZE.x / SCALEDSRCSIZE.x, BUFSIZE.y / SCALEDSRCSIZE.y});
-    damage.translate(CORRECTVEC);
-
-    // go from buffer coords in the damage to hl logical
-    damage.scale(SURFSIZE / BUFSIZE);
+        damage.translate(-m_resource->m_current.viewport.source.pos());
+    }
+    damage.scale(SURFSIZE / SOURCE_SIZE);
+    const auto transformedBuffer = m_resource->m_current.transform % 2 == 1 ? Vector2D{BUFSIZE.y, BUFSIZE.x} : BUFSIZE;
+    damage.translate(CORRECTVEC * (SURFSIZE / transformedBuffer));
 
     if (auto window = CWindow::fromView(m_view.lock()); window) {
         if (!window->backend().isX11()) {

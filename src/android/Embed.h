@@ -15,6 +15,7 @@ extern "C" {
 int anhyprland_run(struct ANativeWindow* window, int width, int height, const char* config, void (*ready)(void* userdata), void* userdata);
 // These calls are thread-safe. Window references are retained until processed.
 int anhyprland_window(struct ANativeWindow* window, int width, int height);
+int anhyprland_window_orientation(const char* app_id, int axis);
 // Follow the Android display's current mode without forcing a device policy.
 int anhyprland_refresh_rate(int millihertz);
 int anhyprland_pointer(float x, float y, uint32_t button, int pressed);

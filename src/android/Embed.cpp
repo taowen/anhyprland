@@ -5,6 +5,11 @@
 #include "../pointer/PointerManager.hpp"
 #include "../layout/algorithm/tiled/yibu/YibuAlgorithm.hpp"
 #include "../config/supplementary/executor/Executor.hpp"
+#include "../desktop/state/WindowState.hpp"
+#include "../desktop/view/window/Window.hpp"
+#include "../desktop/view/window/WindowMetadata.hpp"
+#include "../layout/space/Space.hpp"
+#include "../managers/fullscreen/FullscreenController.hpp"
 #include <aquamarine/backend/Android.hpp>
 #include <android/native_window.h>
 #include <android/log.h>
@@ -462,6 +467,22 @@ extern "C" int anhyprland_unicode(uint32_t codepoint) {
             output->key(42, true);
         if (rightShift)
             output->key(54, true);
+    });
+}
+
+extern "C" int anhyprland_window_orientation(const char* app_id, int axis) {
+    if (!app_id || axis < 0 || axis > 2)
+        return -EINVAL;
+    return enqueue([id = std::string(app_id), axis] {
+        for (const auto& window : Desktop::windowState()->windows()) {
+            if (window->metadata().appID() != id || window->m_hostOrientation == axis)
+                continue;
+            window->m_hostOrientation = axis;
+            if (window->m_workspace && window->m_workspace->space())
+                window->m_workspace->space()->recalculate();
+            if (Fullscreen::controller()->isFullscreen(window))
+                Fullscreen::controller()->updateWindowFullscreenGeometry(window);
+        }
     });
 }
 

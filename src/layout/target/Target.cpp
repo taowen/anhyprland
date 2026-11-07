@@ -2,6 +2,7 @@
 #include "../space/Space.hpp"
 #include "../../debug/log/Logger.hpp"
 #include "../../managers/fullscreen/FullscreenController.hpp"
+#include "../../desktop/view/window/Window.hpp"
 
 #include <hyprutils/utils/ScopeGuard.hpp>
 
@@ -14,6 +15,8 @@ Vector2D ITarget::clampSizeForDesired(const Vector2D& size) {
         result = result.clamp(*minimum);
     if (const auto maximum = maxSize())
         result = result.clamp(Vector2D{MIN_WINDOW_SIZE, MIN_WINDOW_SIZE}, *maximum);
+    if (const auto win = window(); win && win->m_hostOrientation && ((win->m_hostOrientation == 2) != (result.y > result.x)))
+        std::swap(result.x, result.y);
     return result;
 }
 
