@@ -740,7 +740,9 @@ void CWLSurfaceResource::sortSubsurfaces() {
         firstNonNegative = m_subsurfaces.size();
 
     for (size_t i = firstNonNegative; i < m_subsurfaces.size(); ++i) {
-        m_subsurfaces.at(i)->m_zIndex = i - firstNonNegative;
+        // Zero belongs to the parent; keep every above-parent child positive
+        // so a later place_above(parent) cannot cover an existing sibling.
+        m_subsurfaces.at(i)->m_zIndex = i - firstNonNegative + 1;
     }
 
     for (int i = 0; i < firstNonNegative; ++i) {
