@@ -69,9 +69,17 @@ CYibuAlgorithm::CYibuAlgorithm() {
                 g_pHyprRenderer->damageMonitor(monitor);
         }
     });
+    m_title = Event::bus()->m_events.window.title.listen([this](PHLWINDOW window) {
+        if (!m_parent || !window || window->m_workspace != m_parent->space()->workspace())
+            return;
+        controls();
+        if (auto monitor = m_parent->space()->workspace()->m_monitor.lock())
+            g_pHyprRenderer->damageMonitor(monitor);
+    });
 }
 CYibuAlgorithm::~CYibuAlgorithm() {
     m_focus.reset();
+    m_title.reset();
     m_fullscreen.reset();
     if (m_hoverTimer)
         wl_event_source_remove(m_hoverTimer);

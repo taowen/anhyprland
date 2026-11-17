@@ -75,6 +75,7 @@ namespace Layout::Tiled {
         int                                                   m_hoverSlot = -1, m_promotedSlot = -1;
         wl_event_source*                                      m_hoverTimer = nullptr;
         CHyprSignalListener                                   m_focus;
+        CHyprSignalListener                                   m_title;
         CHyprSignalListener                                   m_fullscreen;
         void                                                  select(SP<ITarget>);
         void                                                  used(SP<ITarget>);
